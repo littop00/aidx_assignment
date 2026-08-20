@@ -1,0 +1,9 @@
+proto(rev.0)/
+backup/
+.worktrees/
+**/__pycache__/
+**/.pytest_cache/
+*.db
+*.log
+.venv/
+venv/
