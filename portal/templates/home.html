@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}&#45824;&#49884;&#48372;&#46300; - BOM &#51116;&#47308;&#48708; &#54252;&#53448;{% endblock %}
+{% block content %}
+<h2 class="page-title">&#45824;&#49884;&#48372;&#46300;</h2>
+{% if active_version %}<p class="text-muted small">&#54788;&#51116; &#54869;&#51221; BOM: {{ active_version.name }} (v{{ active_version.version_no }})</p>{% endif %}
+
+<form class="portal-card dashboard-vehicle-filter" method="get">
+    <label class="form-label" for="dashboard-vehicle">&#52264;&#51333;</label>
+    <select id="dashboard-vehicle" name="vehicle" class="form-select" onchange="this.form.submit()">
+        {% for vehicle in vehicles %}<option value="{{ vehicle }}" {% if vehicle == selected_vehicle %}selected{% endif %}>{{ vehicle }}</option>{% endfor %}
+    </select>
+    <span class="text-muted small">&#54788;&#51116; &#52264;&#51333;&#51032; &#44397;&#45236;·&#54644;&#50808; &#48708;&#50857;&#51012; &#48372;&#50668;&#51457;&#45768;&#45796;.</span>
+</form>
+
+<div class="kpi-row">
+    <div class="kpi-card"><div class="kpi-icon"><i class="bi bi-boxes"></i></div><div class="kpi-body"><div class="kpi-label">&#52509; &#54408;&#47785; &#49688;</div><div class="kpi-value">{{ total_parts }}</div></div></div>
+    <div class="kpi-card kpi-warning"><div class="kpi-icon"><i class="bi bi-exclamation-triangle"></i></div><div class="kpi-body"><div class="kpi-label">&#48120;&#51077;&#47141; &#54408;&#47785;</div><div class="kpi-value">{{ missing }}</div></div></div>
+    <div class="kpi-card kpi-info"><div class="kpi-icon"><i class="bi bi-house"></i></div><div class="kpi-body"><div class="kpi-label">&#44397;&#45236; &#48708;&#50857;</div><div class="kpi-value">{{ "{:,.0f}".format(domestic_case_total) }}</div></div></div>
+    <div class="kpi-card kpi-success"><div class="kpi-icon"><i class="bi bi-airplane"></i></div><div class="kpi-body"><div class="kpi-label">&#54644;&#50808; &#48708;&#50857;</div><div class="kpi-value">{{ "{:,.0f}".format(overseas_case_total) }}</div></div></div>
+</div>
+
+{% macro render_node(node) %}
+<li class="tree-node">{% if node.children %}<details class="tree-details"><summary><span class="tree-label">{{ node.part_name }}</span><span class="tree-part-no">{{ node.vehicle }} · {{ node.part_no }}</span><span class="tree-cost">{{ "{:,.0f}".format(node.total_cost) }}</span></summary><ul class="tree-children">{% for child in node.children %}{{ render_node(child) }}{% endfor %}</ul></details>{% else %}<div class="tree-leaf"><span class="tree-label">{{ node.part_name }}</span><span class="tree-part-no">{{ node.vehicle }} · {{ node.part_no }}</span><span class="tree-cost">{{ "{:,.0f}".format(node.total_cost) }}</span></div>{% endif %}</li>
+{% endmacro %}
+<section class="dashboard-case-board">
+{% for panel in dashboard_cases %}
+<article class="portal-card dashboard-case-panel"><header><div><h3 class="card-title">{{ panel.title }}</h3><span class="text-muted small">{{ panel.subtitle }}</span></div><strong>{{ "{:,.0f}".format(panel.total) }}</strong></header><div class="case-panel-totals"><span>&#51116;&#47308;&#48708; {{ "{:,.0f}".format(panel.material_total) }}</span><span>&#47932;&#47448;&#48708; {{ "{:,.0f}".format(panel.logistics_total) }}</span></div>{% for cat in panel.categories %}<details class="tree-details tree-category" open><summary><span class="tree-label">{{ cat.name }}</span><span class="tree-cost">{{ "{:,.0f}".format(cat.total_sum) }}</span></summary><ul class="tree-children">{% for child in cat.children %}{{ render_node(child) }}{% endfor %}</ul></details>{% else %}<div class="text-muted small py-3">&#51077;&#47141;&#46108; &#48708;&#50857;&#51060; &#50630;&#49845;&#45768;&#45796;.</div>{% endfor %}</article>
+{% endfor %}
+</section>
+{% endblock %}

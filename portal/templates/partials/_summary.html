@@ -1,0 +1,37 @@
+{% macro render_node(node) %}
+<li class="tree-node">
+    {% if node.children %}
+    <details class="tree-details">
+        <summary><span class="tree-label">{{ node.part_name }}</span><span class="tree-part-no">{{ node.part_no }}</span><span class="tree-cost">{{ "{:,.0f}".format(node.total_cost) }}</span></summary>
+        <ul class="tree-children">{% for child in node.children %}{{ render_node(child) }}{% endfor %}</ul>
+    </details>
+    {% else %}
+    <div class="tree-leaf"><span class="tree-label">{{ node.part_name }}</span><span class="tree-part-no">{{ node.part_no }}</span><span class="tree-cost">{{ "{:,.0f}".format(node.total_cost) }}</span></div>
+    {% endif %}
+</li>
+{% endmacro %}
+
+<div class="portal-card summary-toolbar">
+    <div class="filter-group">
+        <label class="form-label">&#44397;&#44032;</label>
+        <select name="country" class="form-select form-select-sm" hx-get="{{ url_for('bom.summary') }}" hx-target="#summary-container" hx-trigger="change">
+            {% for c in countries %}<option value="{{ c }}" {% if c == country %}selected{% endif %}>{{ c }}</option>{% endfor %}
+        </select>
+    </div>
+    <div class="summary-grand-total">
+        <span>&#52509; &#51116;&#47308;&#48708; {{ "{:,.0f}".format(grand_material) }}</span>
+        <span>&#52509; &#47932;&#47448;&#48708; {{ "{:,.0f}".format(grand_logistics) }}</span>
+        <span class="grand-total-highlight">&#52509;&#48708;&#50857; {{ "{:,.0f}".format(grand_total) }}</span>
+    </div>
+</div>
+
+{% for cat in categories %}
+<div class="portal-card tree-card">
+    <details class="tree-details tree-category" open>
+        <summary><span class="tree-label">{{ cat.name }}</span><span class="tree-cost">&#52509; &#51116;&#47308;&#48708; {{ "{:,.0f}".format(cat.material_sum) }} · &#52509;&#48708;&#50857; {{ "{:,.0f}".format(cat.total_sum) }}</span></summary>
+        <ul class="tree-children">{% for child in cat.children %}{{ render_node(child) }}{% endfor %}</ul>
+    </details>
+</div>
+{% else %}
+<div class="portal-card text-center text-muted py-4">&#45936;&#51060;&#53552;&#44032; &#50630;&#49845;&#45768;&#45796;.</div>
+{% endfor %}

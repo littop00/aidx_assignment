@@ -1,0 +1,5 @@
+{% for field, column in design_fields if field not in ('part_no',) %}
+<label class="small d-block mb-1">{{ field }}
+  <input class="form-control form-control-sm" name="{{ field }}" value="{{ part[field] or '' }}">
+</label>
+{% endfor %}

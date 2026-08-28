@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}재료비 관리 포탈{% endblock %}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+</head>
+<body>
+<div id="toast-slot" class="toast-stack"></div>
+{% if current_user.is_authenticated %}
+    <div class="portal-shell">
+        <nav class="portal-sidebar">
+            <div class="portal-brand">
+                <i class="bi bi-boxes"></i>
+                <span>재료비 관리 포탈</span>
+            </div>
+            <ul class="portal-nav">
+                <li>
+                    <a href="{{ url_for('home.index') }}" class="{% if request.endpoint == 'home.index' %}active{% endif %}">
+                        <i class="bi bi-speedometer2"></i> 대시보드
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('bom.index') }}" class="{% if request.endpoint in ('bom.index', 'bom.grid', 'bom.summary') %}active{% endif %}">
+                        <i class="bi bi-table"></i> BOM 관리
+                    </a>
+                </li>
+                {% if current_user.role != 'admin' %}<li>
+                    <a href="{{ url_for('bom.submissions') }}" class="{% if request.endpoint and request.endpoint.startswith('bom.submission') %}active{% endif %}">
+                        <i class="bi bi-send-check"></i> 내 제출 현황
+                    </a>
+                </li>{% endif %}
+                {% if current_user.role == 'admin' %}<li>
+                    <a href="{{ url_for('admin.bom_versions') }}" class="{% if request.endpoint == 'admin.bom_versions' %}active{% endif %}">
+                        <i class="bi bi-clipboard2-check"></i> BOM 관리자
+                    </a>
+                </li><li>
+                    <a href="{{ url_for('admin.reviews') }}" class="{% if request.endpoint and request.endpoint.startswith('admin.review') %}active{% endif %}">
+                        <i class="bi bi-clipboard-check"></i> 제출 검토
+                    </a>
+                </li>{% endif %}
+            </ul>
+        </nav>
+        <div class="portal-main">
+            <header class="portal-topbar">
+                <div id="fx-widget" hx-get="{{ url_for('fx.widget') }}" hx-trigger="load"></div>
+                <div class="portal-user">
+                    <details class="notification-menu">
+                        <summary aria-label="알림"><i class="bi bi-bell"></i>{% if nav_unread_count %}<b>{{ nav_unread_count }}</b>{% endif %}</summary>
+                        <div class="notification-popover"><div class="d-flex justify-content-between align-items-center mb-2"><strong>알림</strong><form method="post" action="{{ url_for('bom.read_notifications') }}"><button class="btn btn-link btn-sm p-0">모두 읽음</button></form></div>{% for notice in nav_notifications %}<a href="{{ notice.link or '#' }}" class="notification-item {% if not notice.is_read %}unread{% endif %}"><strong>{{ notice.title }}</strong><span>{{ notice.message }}</span><small>{{ notice.created_at }}</small></a>{% else %}<p class="text-muted small mb-0">새 알림이 없습니다.</p>{% endfor %}</div>
+                    </details>
+                    <i class="bi bi-person-circle"></i>
+                    <span>{{ current_user.username }}</span>
+                    <a href="{{ url_for('auth.logout') }}" class="btn btn-sm btn-outline-secondary">로그아웃</a>
+                </div>
+            </header>
+            <main class="portal-content">
+                {% with messages = get_flashed_messages() %}
+                    {% if messages %}
+                        {% for message in messages %}
+                        <div class="alert alert-success">{{ message }}</div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+                {% block content %}{% endblock %}
+            </main>
+        </div>
+    </div>
+{% else %}
+    {% block guest_content %}{% endblock %}
+{% endif %}
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+(() => {
+
+    function formatAmount(value) {
+        return new Intl.NumberFormat("ko-KR", {maximumFractionDigits: 0}).format(Number(value || 0));
+    }
+
+    function updateSavedRow(row, payload) {
+        if (payload.countries) {
+            Object.entries(payload.countries).forEach(([country, values]) => {
+                ["material_cost", "logistics_cost", "total_cost"].forEach((name) => {
+                    const cell = row.querySelector(`[data-cost="${country}__${name}"]`);
+                    if (cell) cell.textContent = formatAmount(values[name]);
+                });
+            });
+        }
+        ["material_cost", "logistics_cost", "total_cost"].forEach((name) => {
+            const cell = row.querySelector(`[data-cost="${name}"]`);
+            if (cell) cell.textContent = formatAmount(payload[name]);
+        });
+        const badge = row.querySelector(".status-done, .status-missing");
+        if (badge) {
+            badge.className = `badge ${payload.status_done ? "status-done" : "status-missing"}`;
+            badge.innerHTML = payload.status_done
+                ? '<i class="bi bi-check-circle"></i> 입력 완료'
+                : '<i class="bi bi-exclamation-circle"></i> 미입력';
+        }
+        const status = row.querySelector(".row-save-message");
+        if (status) status.textContent = payload.error ? `Input error: ${payload.error}` : "Saved";
+        const button = row.querySelector(".save-row-btn");
+        if (button) button.innerHTML = payload.error
+            ? '<i class="bi bi-exclamation-triangle"></i> Error'
+            : '<i class="bi bi-check2"></i> Saved';
+        row.classList.toggle("row-save-error", Boolean(payload.error));
+    }
+
+    function showSaveMessage(message, isError = false) {
+        const slot = document.getElementById("toast-slot");
+        if (!slot) return;
+        slot.innerHTML = `<div class="toast-item ${isError ? "toast-error" : "toast-success"}">${message}</div>`;
+        window.setTimeout(() => { slot.innerHTML = ""; }, 2500);
+    }
+
+    async function saveRow(row, showSuccess = false) {
+        if (!row || row.dataset.saving === "true") return;
+        row.dataset.saving = "true";
+        const button = row.querySelector(".save-row-btn");
+        const data = new URLSearchParams();
+        row.querySelectorAll("[name]").forEach((field) => data.append(field.name, field.value));
+        try {
+            const response = await fetch(row.dataset.saveUrl, {
+                method: "POST",
+                credentials: "same-origin",
+                headers: {"Accept": "application/json", "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"},
+                body: data.toString(),
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const payload = await response.json();
+            updateSavedRow(row, payload);
+            row.dataset.saving = "false";
+            if (showSuccess) showSaveMessage("&#51200;&#51109;&#46104;&#50632;&#49845;&#45768;&#45796;.");
+        } catch (error) {
+            console.error("BOM row save failed", error);
+            row.dataset.saving = "false";
+            showSaveMessage("&#51200;&#51109;&#50640; &#49892;&#54056;&#54664;&#49845;&#45768;&#45796;. &#45796;&#49884; &#49884;&#46020;&#54644; &#51452;&#49464;&#50836;.", true);
+        }
+    }
+    window.saveBomRow = saveRow;
+
+    document.addEventListener("change", (event) => {
+        if (event.target.id === "select-all") {
+            document.querySelectorAll("#grid-container .row-select:not(:disabled)").forEach((box) => { box.checked = event.target.checked; });
+            return;
+        }
+        const field = event.target.closest(".row-autosave");
+        if (field) field.closest("tr[data-save-url]").dataset.dirty = "true";
+    });
+
+    document.addEventListener("click", (event) => {
+        const bulkApply = event.target.closest("#bulk-apply-btn");
+        const bulkSave = event.target.closest("#bulk-save-btn");
+        if (bulkApply || bulkSave) {
+            event.preventDefault();
+            const rows = [...document.querySelectorAll("#grid-container tr[data-save-url]")].filter((row) => row.querySelector(".row-select, .assignment-toggle")?.checked);
+            if (!rows.length) { showSaveMessage("적용할 행을 먼저 선택해 주세요.", true); return; }
+            if (bulkApply) {
+                const country = document.getElementById("bulk-country")?.value;
+                const field = document.getElementById("bulk-field")?.value;
+                const value = document.getElementById("bulk-value")?.value;
+                if (value === "") { showSaveMessage("일괄 적용할 값을 입력해 주세요.", true); return; }
+                rows.forEach((row) => {
+                    const selector = country === "all" ? `[name$="__${field}"]` : `[name="${country}__${field}"]`;
+                    row.querySelectorAll(selector).forEach((input) => { if (!input.disabled) input.value = value; });
+                });
+                showSaveMessage(`${rows.length}개 행에 값을 적용했습니다. 선택 저장을 눌러 반영하세요.`);
+            } else {
+                Promise.all(rows.map((row) => saveRow(row))).then(() => showSaveMessage(`${rows.length}개 행을 저장했습니다.`));
+            }
+            return;
+        }
+    });
+    document.addEventListener("input", (event) => {
+        const field = event.target.closest(".row-autosave");
+        if (field) field.closest("tr[data-save-url]").dataset.dirty = "true";
+    });
+    window.saveDirtyBomRows = async () => {
+        const rows = [...document.querySelectorAll("#grid-container tr[data-save-url][data-dirty='true']")];
+        if (!rows.length) { showSaveMessage("변경된 입력값이 없습니다."); return; }
+        await Promise.all(rows.map(async (row) => { await saveRow(row); delete row.dataset.dirty; }));
+        showSaveMessage(`${rows.length}개 행을 임시 저장했습니다.`);
+    };
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+<div class="fx-widget">
+    <div class="fx-rates">
+        <span class="fx-rate"><i class="bi bi-currency-dollar"></i> USD {{ "{:,.2f}".format(rates.USD) if rates.USD else "미확보" }}</span>
+        <span class="fx-rate"><i class="bi bi-currency-euro"></i> EUR {{ "{:,.2f}".format(rates.EUR) if rates.EUR else "미확보" }}</span>
+    </div>
+    <div class="fx-actions">
+        <button type="button" class="btn btn-sm btn-outline-secondary"
+                hx-post="{{ url_for('fx.refresh') }}" hx-target="#fx-widget" hx-swap="innerHTML">
+            <i class="bi bi-arrow-clockwise"></i> 환율 갱신
+        </button>
+        <a href="{{ url_for('fx.download') }}" class="btn btn-sm btn-outline-primary">
+            <i class="bi bi-file-earmark-excel"></i> 엑셀 다운로드
+        </a>
+    </div>
+    {% if message %}
+    <span class="fx-message">{{ message }}</span>
+    {% endif %}
+</div>

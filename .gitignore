@@ -7,3 +7,5 @@ backup/
 *.log
 .venv/
 venv/
+.secret_key
+verify.cookies

@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}제출 검토 | 재료비 관리 포탈{% endblock %}
+{% block content %}
+<div class="page-heading"><div><p class="eyebrow">REVIEW QUEUE</p><h1>제출 검토</h1><p class="text-muted mb-0">{{ active.name if active else '확정 BOM 없음' }} · 제출 당시 저장된 내용을 기준으로 검토합니다.</p></div><a class="btn btn-outline-secondary" href="{{ url_for('admin.bom_versions') }}"><i class="bi bi-layers"></i> BOM 관리자</a></div>
+<div class="portal-card p-0 overflow-hidden">
+  <table class="table mb-0 align-middle review-table"><thead><tr><th>작성자</th><th>차종 / BOM</th><th>제출일</th><th>상태</th><th>검토</th></tr></thead><tbody>
+  {% for item in submissions if item.status != 'draft' %}<tr><td>{{ item.username }}</td><td>{{ active.vehicle }}<small class="d-block text-muted">{{ active.name }}</small></td><td>{{ item.submitted_at or '-' }}</td><td><span class="badge text-bg-{{ 'success' if item.status == 'approved' else 'warning' if item.status == 'returned' else 'primary' }}">{{ {'submitted':'검토 대기','approved':'승인','returned':'반려'}.get(item.status, item.status) }}</span></td><td><a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.review_detail', submission_id=item.id) }}">내용 보기</a></td></tr>{% else %}<tr><td colspan="5" class="text-center text-muted py-5">검토 요청이 없습니다.</td></tr>{% endfor %}</tbody></table>
+</div>
+{% endblock %}
