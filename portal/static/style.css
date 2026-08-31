@@ -197,6 +197,9 @@ body {
 }
 
 .level-badge { display:inline-block; min-width:2rem; text-align:center; font-size:.68rem; padding:.1rem .3rem; border-radius:5px; background:var(--portal-accent-soft); color:var(--portal-accent); font-weight:700; }
+.group-badge, .group-badge-child { display:inline-block; margin-left:.4rem; font-size:.68rem; padding:.15rem .4rem; border-radius:5px; font-weight:700; vertical-align:middle; white-space:nowrap; }
+.group-badge { background:#e8e4ff; color:#5b42a2; cursor:help; }
+.group-badge-child { background:#f1f3f5; color:#495057; }
 .level-indent { display:inline-block; width:calc(var(--level, 0) * 8px); }
 .level-0 { width:0; }.level-1 { width:8px; }.level-2 { width:16px; }.level-3 { width:24px; }.level-4 { width:32px; }.level-5 { width:40px; }.level-6 { width:48px; }
 
@@ -498,6 +501,19 @@ body {
 
 .bom-table input:not([type="checkbox"]), .bom-table select {
     min-width: 90px;
+}
+
+.bom-table .form-control,
+.bom-table .form-select {
+    border-color: var(--portal-border);
+    background-color: #fff;
+    color: var(--portal-text);
+}
+
+.bom-table .form-control:focus,
+.bom-table .form-select:focus {
+    border-color: var(--portal-accent);
+    box-shadow: 0 0 0 .2rem rgba(36, 91, 219, .12);
 }
 
 .bom-table input[type="checkbox"] {

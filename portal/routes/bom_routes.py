@@ -82,6 +82,10 @@ def _filtered_rows(conn, countries, status, search, categories=None, user_id=Non
         row["group"] = group
         row["is_group_parent"] = bool(group and group["parent_part_no"] == p["part_no"] and group["parent_row_num"] == p["row_num"])
         row["group_child"] = bool(group and not row["is_group_parent"])
+        row["group_members"] = [
+            m for m in (db.group_members(conn, active["id"], p["part_no"], p["row_num"]) if row["is_group_parent"] and active else [])
+            if (m["part_no"], m["row_num"]) != (p["part_no"], p["row_num"])
+        ]
         row["mip"] = any((row["country_data"].get(c, {}).get("sourcing_part") or "") == "MIP" for c in countries) if "country_data" in row else False
         row["assigned"] = is_assigned
         row["country_data"] = {
@@ -172,6 +176,7 @@ def grid():
         # Reuse this list for both case-column management and sourcing choices.
         countries=overseas_countries,
         sourcing_countries=["KD", "LP", "MIP"] + overseas_countries,
+        assembly_sourcing_options=["KD", "LP", "MIP"],
         selected_countries=selected_countries,
         can_manage_countries=current_user.role == "admin",
         is_admin=current_user.role == "admin",
@@ -341,6 +346,19 @@ def set_assignment(row_num, part_no=None):
     conn.close()
     return jsonify({"ok": True, "assigned": assigned, "count": count})
 
+@bom_bp.route("/my-assignments")
+@login_required
+def my_assignments():
+    if current_user.role == "admin":
+        return redirect(url_for("bom.index"))
+    conn = db.get_connection(current_app.config["DB_PATH"])
+    active = db.get_active_bom_version(conn)
+    submission = db.get_or_create_submission(conn, active["id"], int(current_user.id)) if active else None
+    parts = db.list_current_assignments(conn, active["id"], int(current_user.id)) if active else []
+    conn.close()
+    can_cancel = bool(submission) and submission["status"] in ("draft", "returned")
+    return render_template("my_assignments.html", parts=parts, submission=submission, can_cancel=can_cancel, active_version=active)
+
 @bom_bp.route("/reset-work", methods=["POST"])
 @login_required
 def reset_work():
@@ -391,14 +409,15 @@ def set_selected_group():
     if not active or any(part is None for part in parts):
         conn.close()
         return jsonify({"ok": False, "message": "선택한 BOM 행을 찾을 수 없습니다."}), 404
-    parent = parts[0]
+    parent = min(parts, key=lambda p: ((p.get("level_depth") or 0), p["row_num"]))
     existing = db.group_for_part(conn, active["id"], parent["part_no"], parent["row_num"])
     if existing and existing["parent_part_no"] == parent["part_no"] and existing["parent_row_num"] == parent["row_num"]:
         db.set_part_group(conn, active["id"], parent["part_no"], parent["row_num"], int(current_user.id), False)
         conn.close()
         return jsonify({"ok": True, "removed": True})
     try:
-        db.set_part_group(conn, active["id"], parent["part_no"], parent["row_num"], int(current_user.id), True)
+        member_keys = [(p["part_no"], p["row_num"]) for p in parts]
+        db.set_part_group(conn, active["id"], parent["part_no"], parent["row_num"], int(current_user.id), True, member_keys=member_keys)
     except ValueError as exc:
         conn.close()
         return jsonify({"ok": False, "message": str(exc)}), 422

@@ -17,7 +17,7 @@ document.addEventListener('click', async (event) => {
   const button = event.target.closest('#group-selected-btn');
   if (!button) return;
   const selected = [...document.querySelectorAll('.row-select:checked, .assignment-toggle:checked')];
-  if (selected.length < 2) { alert('그룹으로 지정할 행을 두 개 이상 선택하세요.'); return; }
+  if (selected.length < 2) { window.showToast?.('그룹으로 지정할 행을 두 개 이상 선택하세요.', true); return; }
   try {
     const data = new URLSearchParams(); selected.forEach(item => data.append('row_num', item.dataset.rowNum));
     const response = await fetch('{{ url_for('bom.set_selected_group') }}', {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json'}, body: data});
@@ -26,7 +26,8 @@ document.addEventListener('click', async (event) => {
     const form = document.getElementById('filter-form');
     const page = document.querySelector('.page-btn.active')?.textContent || '1';
     htmx.ajax('GET', '{{ url_for('bom.grid') }}?page=' + page, {target: '#grid-container', values: Object.fromEntries(new FormData(form))});
-  } catch (error) { alert(error.message || '그룹 변경에 실패했습니다.'); }
+    window.showToast?.(result.removed ? '그룹 지정을 해제했습니다.' : `선택한 ${selected.length}개 품목을 그룹으로 지정했습니다.`);
+  } catch (error) { window.showToast?.(error.message || '그룹 변경에 실패했습니다.', true); }
 });
 function refreshAssignmentAccess(initialize = false) {
   document.querySelectorAll('.assignment-toggle').forEach((checkbox) => {
@@ -108,7 +109,14 @@ document.addEventListener('submit', async (event) => {
 document.addEventListener('click', (event) => {
   if (event.target.closest('#save-draft-btn')) window.saveDirtyBomRows();
   const detail = event.target.closest('.detail-toggle');
-  if (detail) document.querySelectorAll('.detail-column').forEach((cell) => cell.classList.toggle('d-none'));
+  if (detail) {
+    document.querySelectorAll('.detail-column').forEach((cell) => cell.classList.toggle('d-none'));
+    const header = document.getElementById('bom-basic-group-header');
+    if (header) {
+      const detailsVisible = document.querySelector('.detail-column') && !document.querySelector('.detail-column').classList.contains('d-none');
+      header.colSpan = Number(header.dataset.baseColspan) + (detailsVisible ? Number(header.dataset.detailColspan) : 0);
+    }
+  }
 });
 document.addEventListener('DOMContentLoaded', () => {
   const form = document.getElementById('filter-form');

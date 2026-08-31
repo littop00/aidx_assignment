@@ -31,6 +31,11 @@
                     </a>
                 </li>
                 {% if current_user.role != 'admin' %}<li>
+                    <a href="{{ url_for('bom.my_assignments') }}" class="{% if request.endpoint == 'bom.my_assignments' %}active{% endif %}">
+                        <i class="bi bi-person-check"></i> 내 담당 품목
+                    </a>
+                </li>
+                <li>
                     <a href="{{ url_for('bom.submissions') }}" class="{% if request.endpoint and request.endpoint.startswith('bom.submission') %}active{% endif %}">
                         <i class="bi bi-send-check"></i> 내 제출 현황
                     </a>
@@ -131,18 +136,19 @@
                 headers: {"Accept": "application/json", "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"},
                 body: data.toString(),
             });
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const payload = await response.json();
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
             updateSavedRow(row, payload);
             row.dataset.saving = "false";
             if (showSuccess) showSaveMessage("&#51200;&#51109;&#46104;&#50632;&#49845;&#45768;&#45796;.");
         } catch (error) {
             console.error("BOM row save failed", error);
             row.dataset.saving = "false";
-            showSaveMessage("&#51200;&#51109;&#50640; &#49892;&#54056;&#54664;&#49845;&#45768;&#45796;. &#45796;&#49884; &#49884;&#46020;&#54644; &#51452;&#49464;&#50836;.", true);
+            showSaveMessage(error.message || "저장에 실패했습니다. 다시 시도해 주세요.", true);
         }
     }
     window.saveBomRow = saveRow;
+    window.showToast = showSaveMessage;
 
     document.addEventListener("change", (event) => {
         if (event.target.id === "select-all") {
@@ -165,11 +171,22 @@
                 const field = document.getElementById("bulk-field")?.value;
                 const value = document.getElementById("bulk-value")?.value;
                 if (value === "") { showSaveMessage("일괄 적용할 값을 입력해 주세요.", true); return; }
+                let appliedRows = 0;
                 rows.forEach((row) => {
                     const selector = country === "all" ? `[name$="__${field}"]` : `[name="${country}__${field}"]`;
-                    row.querySelectorAll(selector).forEach((input) => { if (!input.disabled) input.value = value; });
+                    const inputs = [...row.querySelectorAll(selector)].filter((input) => !input.disabled);
+                    if (!inputs.length) return;
+                    inputs.forEach((input) => {
+                        input.value = value;
+                        input.dispatchEvent(new Event("input", {bubbles: true}));
+                    });
+                    appliedRows += 1;
                 });
-                showSaveMessage(`${rows.length}개 행에 값을 적용했습니다. 선택 저장을 눌러 반영하세요.`);
+                if (!appliedRows) {
+                    showSaveMessage("선택한 행에 적용할 수 있는 항목이 없습니다. 담당 품목 저장 여부와 국가/항목 선택을 확인해 주세요.", true);
+                } else {
+                    showSaveMessage(`${appliedRows}개 행에 값을 적용했습니다. 선택 저장을 눌러 반영하세요.`);
+                }
             } else {
                 Promise.all(rows.map((row) => saveRow(row))).then(() => showSaveMessage(`${rows.length}개 행을 저장했습니다.`));
             }

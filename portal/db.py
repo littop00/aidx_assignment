@@ -572,6 +572,15 @@ def list_assigned_parts(conn, bom_id, user_id):
     """, (bom_id, user_id, user_id)).fetchall()
     return [dict(r) for r in rows]
 
+def list_current_assignments(conn, bom_id, user_id):
+    rows = conn.execute("""
+        SELECT p.* FROM bom_parts p
+        JOIN bom_part_assignments a ON a.bom_id=p.bom_id AND a.part_no=p.part_no AND a.row_num=p.row_num
+        WHERE p.bom_id=? AND a.user_id=?
+        ORDER BY p.row_num
+    """, (bom_id, user_id)).fetchall()
+    return [dict(r) for r in rows]
+
 def assigned_part_keys(conn, bom_id, user_id):
     rows = conn.execute("""
         SELECT part_no, row_num FROM bom_part_assignments WHERE bom_id=? AND user_id=?
@@ -602,8 +611,18 @@ def group_for_part(conn, bom_id, part_no, row_num):
     """, (bom_id, part_no, row_num)).fetchone()
     return dict(row) if row else None
 
-def set_part_group(conn, bom_id, parent_part_no, parent_row_num, owner_user_id, enabled):
-    """Create a group from a parent through all following descendant rows."""
+def group_members(conn, bom_id, parent_part_no, parent_row_num):
+    rows = conn.execute("""
+        SELECT m.part_no, m.row_num, p.part_name FROM bom_part_group_members m
+        JOIN bom_parts p ON p.bom_id=m.bom_id AND p.part_no=m.part_no AND p.row_num=m.row_num
+        WHERE m.bom_id=? AND m.parent_part_no=? AND m.parent_row_num=?
+        ORDER BY m.row_num
+    """, (bom_id, parent_part_no, parent_row_num)).fetchall()
+    return [dict(r) for r in rows]
+
+def set_part_group(conn, bom_id, parent_part_no, parent_row_num, owner_user_id, enabled, member_keys=None):
+    """Create a group. With member_keys (list of (part_no, row_num)), group exactly
+    those rows. Otherwise, group the parent through all following descendant rows."""
     existing = group_for_part(conn, bom_id, parent_part_no, parent_row_num)
     if not enabled:
         if existing:
@@ -614,13 +633,18 @@ def set_part_group(conn, bom_id, parent_part_no, parent_row_num, owner_user_id, 
     parent = get_part(conn, parent_part_no, parent_row_num, bom_id)
     if not parent:
         raise ValueError("BOM row not found")
-    descendants = [parent]
-    for part in list_parts(conn, bom_id):
-        if part["row_num"] <= parent_row_num:
-            continue
-        if (part.get("level_depth") or 0) <= (parent.get("level_depth") or 0):
-            break
-        descendants.append(part)
+    if member_keys is not None:
+        descendants = [get_part(conn, part_no, row_num, bom_id) for part_no, row_num in member_keys]
+        if any(part is None for part in descendants):
+            raise ValueError("BOM row not found")
+    else:
+        descendants = [parent]
+        for part in list_parts(conn, bom_id):
+            if part["row_num"] <= parent_row_num:
+                continue
+            if (part.get("level_depth") or 0) <= (parent.get("level_depth") or 0):
+                break
+            descendants.append(part)
     if len(descendants) < 2:
         raise ValueError("하위 품목이 있는 상위 품목만 그룹으로 지정할 수 있습니다.")
     conn.execute("INSERT OR REPLACE INTO bom_part_groups (bom_id,parent_part_no,parent_row_num,owner_user_id,created_at) VALUES (?,?,?,?,?)", (bom_id,parent_part_no,parent_row_num,owner_user_id,datetime.datetime.now().isoformat(timespec="seconds")))

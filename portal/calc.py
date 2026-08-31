@@ -45,8 +45,9 @@ def compute_total_cost(material_cost, logistics_cost, tariff_cost):
 def recalculate_purchase_row(conn, part_no, row_num, country, fields):
     part = db.get_part(conn, part_no, row_num)
     qty = part["qty"] if part else None
+    special_fx_rate = fields.get("special_fx_rate") if country != "한국" else None
     material_cost = compute_material_cost(
-        conn, fields.get("unit_price_material"), qty, fields.get("currency"), fields.get("special_fx_rate")
+        conn, fields.get("unit_price_material"), qty, fields.get("currency"), special_fx_rate
     )
     logistics_cost = compute_logistics_cost(fields.get("unit_price_logistics"), qty)
     tariff_cost = compute_tariff_cost(material_cost, fields.get("tariff_rate"))
