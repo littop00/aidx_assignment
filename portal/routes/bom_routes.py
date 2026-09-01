@@ -125,6 +125,28 @@ def index():
         progress=progress,
     )
 
+@bom_bp.route("/my-bom")
+@login_required
+def my_bom():
+    if current_user.role == "admin":
+        return redirect(url_for("bom.index"))
+    conn = db.get_connection(current_app.config["DB_PATH"])
+    active_version = db.get_active_bom_version(conn)
+    submission = db.get_or_create_submission(conn, active_version["id"], int(current_user.id)) if active_version else None
+    suggestions = db.search_suggestions(conn)
+    parts = db.list_parts(conn)
+    progress = db.submission_progress(conn, active_version["id"], int(current_user.id)) if active_version else {"done": 0, "total": 0, "percent": 0}
+    conn.close()
+    category_counts = Counter(p["category"] for p in parts if p.get("category"))
+    categories = sorted(category_counts)
+    return render_template(
+        "my_bom.html", countries=COUNTRIES, suggestions=suggestions,
+        categories=categories, category_counts=category_counts,
+        active_version=active_version, submission=submission,
+        can_edit=bool(submission and submission["status"] in ("draft", "returned")),
+        progress=progress,
+    )
+
 @bom_bp.route("/grid")
 @login_required
 def grid():
@@ -134,6 +156,7 @@ def grid():
     search = request.args.get("search", "")
     categories = request.args.getlist("category")
     assigned_only = request.args.get("assigned") == "1"
+    scope = request.args.get("scope")
     page = int(request.args.get("page", 1))
     page_size = int(request.args.get("page_size", PAGE_SIZE))
     if page_size not in PAGE_SIZE_OPTIONS:
@@ -180,8 +203,9 @@ def grid():
         selected_countries=selected_countries,
         can_manage_countries=current_user.role == "admin",
         is_admin=current_user.role == "admin",
-        can_edit=current_user.role == "admin" or (submission and submission["status"] in ("draft", "returned")),
-        assignment_enabled=current_user.role != "admin",
+        can_edit=current_user.role == "admin" or (scope == "my_bom" and submission and submission["status"] in ("draft", "returned")),
+        assignment_enabled=current_user.role != "admin" and scope == "my_bom",
+        show_group_button=current_user.role == "admin" or scope == "my_bom",
         assigned_only=assigned_only,
     )
 
