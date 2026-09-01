@@ -307,6 +307,13 @@ def replace_bom_draft_data(conn, bom_id):
     conn.execute("DELETE FROM bom_parts WHERE bom_id = ?", (bom_id,))
     conn.commit()
 
+def delete_bom_draft(conn, bom_id):
+    conn.execute("DELETE FROM bom_purchase_data WHERE bom_id = ?", (bom_id,))
+    conn.execute("DELETE FROM bom_parts WHERE bom_id = ?", (bom_id,))
+    conn.execute("DELETE FROM bom_version_countries WHERE bom_version_id = ?", (bom_id,))
+    conn.execute("DELETE FROM bom_versions WHERE id = ?", (bom_id,))
+    conn.commit()
+
 def migrate_matching_user_work(conn, from_bom_id, to_bom_id):
     """Carry work forward only for structurally unchanged BOM rows.
 

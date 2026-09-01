@@ -97,6 +97,19 @@ def withdraw_bom(bom_id):
     flash("배포를 취소하고 모든 사용자에게 안내했습니다.")
     return redirect(url_for("admin.bom_versions"))
 
+@admin_bp.route("/boms/<int:bom_id>/delete", methods=["POST"])
+@admin_required
+def delete_draft(bom_id):
+    conn = db.get_connection(current_app.config["DB_PATH"])
+    version = db.get_bom_version(conn, bom_id)
+    if not version or version["status"] != "draft":
+        conn.close()
+        abort(400)
+    db.delete_bom_draft(conn, bom_id)
+    conn.close()
+    flash(f"{version['name']} 초안을 삭제했습니다.")
+    return redirect(url_for("admin.bom_versions"))
+
 @admin_bp.route("/boms/<int:bom_id>/countries", methods=["POST"])
 @admin_required
 def set_countries(bom_id):

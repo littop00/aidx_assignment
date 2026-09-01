@@ -4,6 +4,13 @@
 <h2 class="page-title">BOM 관리자</h2>
 <div class="portal-card admin-intro"><strong>관리자 작업 흐름</strong><span>1. 초안 생성 · 2. BOM 업로드 · 국가 설정 · 3. 확정 · 4. 사용자 입력·검토</span></div>
 
+<ul class="nav nav-tabs portal-tabs" role="tablist">
+  <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#admin-tab-bom" type="button"><i class="bi bi-layers"></i> BOM 관리</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#admin-tab-users" type="button"><i class="bi bi-people"></i> 사용자 관리</button></li>
+</ul>
+<div class="tab-content portal-tab-content">
+<div class="tab-pane fade show active" id="admin-tab-bom">
+
 <div class="portal-card">
   <h3 class="card-title"><i class="bi bi-plus-circle"></i> 새 BOM 초안</h3>
   <form method="post" action="{{ url_for('admin.create_draft') }}" class="admin-draft-form">
@@ -18,14 +25,20 @@
   <h3 class="card-title"><i class="bi bi-layers"></i> BOM 버전</h3>
   <div class="table-responsive admin-version-table"><table class="table bom-table"><thead><tr><th>버전</th><th>이름</th><th>차종</th><th>상태</th><th>파일</th><th>생성</th><th>작업</th></tr></thead><tbody>
   {% for version in versions %}
-  <tr><td>Rev.{{ version.version_no }}</td><td>{{ version.name }}</td><td>{{ version.vehicle or '-' }}</td><td>{% if version.is_withdrawn %}<span class="badge text-bg-danger">배포 취소</span>{% else %}<span class="badge {% if version.status == 'published' %}status-done{% elif version.status == 'draft' %}status-missing{% else %}text-bg-secondary{% endif %}">{{ {'draft':'초안','published':'배포 중','archived':'보관'}[version.status] }}</span>{% endif %}</td><td>{{ version.file_name or '-' }}</td><td>{{ version.created_at.replace('T',' ') }}</td><td class="admin-actions">{% if version.status == 'draft' %}<div class="admin-action-stack"><form class="admin-upload-form" method="post" action="{{ url_for('admin.upload_draft', bom_id=version.id) }}" enctype="multipart/form-data"><input type="file" name="bom_file" accept=".xlsx" required><button class="btn btn-sm btn-outline-primary">BOM 업로드</button></form><form class="admin-country-form" method="post" action="{{ url_for('admin.set_countries', bom_id=version.id) }}"><details><summary>국가 설정 ({{ version_countries[version.id]|join(', ') }})</summary><div>{% for country in countries %}<label><input type="checkbox" name="country" value="{{ country }}" {% if country in version_countries[version.id] %}checked{% endif %}> {{ country }}</label>{% endfor %}</div><button class="btn btn-sm btn-outline-secondary">국가 저장</button></details></form><form method="post" action="{{ url_for('admin.publish_draft', bom_id=version.id) }}" onsubmit="return confirm('이 리비전을 사용자에게 배포하시겠습니까? 기존 배포본은 보관 처리됩니다.')"><button class="btn btn-sm btn-primary">검증 후 배포</button></form></div>{% elif version.status == 'published' and not version.is_withdrawn %}<form method="post" action="{{ url_for('admin.withdraw_bom', bom_id=version.id) }}" onsubmit="return confirm('이 BOM의 배포를 취소하시겠습니까? 사용자의 입력과 제출이 즉시 중단됩니다.')"><input class="form-control form-control-sm mb-1" name="reason" placeholder="취소 사유 (사용자에게 안내)"><button class="btn btn-sm btn-outline-danger">배포 취소</button></form>{% else %}<span class="text-muted small">읽기 전용</span>{% endif %}</td></tr>
+  <tr><td>Rev.{{ version.version_no }}</td><td>{{ version.name }}</td><td>{{ version.vehicle or '-' }}</td><td>{% if version.is_withdrawn %}<span class="badge text-bg-danger">배포 취소</span>{% else %}<span class="badge {% if version.status == 'published' %}status-done{% elif version.status == 'draft' %}status-missing{% else %}text-bg-secondary{% endif %}">{{ {'draft':'초안','published':'배포 중','archived':'보관'}[version.status] }}</span>{% endif %}</td><td>{{ version.file_name or '-' }}</td><td>{{ version.created_at.replace('T',' ') }}</td><td class="admin-actions">{% if version.status == 'draft' %}<div class="admin-action-stack"><form class="admin-upload-form" method="post" action="{{ url_for('admin.upload_draft', bom_id=version.id) }}" enctype="multipart/form-data"><input type="file" name="bom_file" accept=".xlsx" required><button class="btn btn-sm btn-outline-primary">BOM 업로드</button></form><form class="admin-country-form" method="post" action="{{ url_for('admin.set_countries', bom_id=version.id) }}"><details><summary>국가 설정 ({{ version_countries[version.id]|join(', ') }})</summary><div>{% for country in countries %}<label><input type="checkbox" name="country" value="{{ country }}" {% if country in version_countries[version.id] %}checked{% endif %}> {{ country }}</label>{% endfor %}</div><button class="btn btn-sm btn-outline-secondary">국가 저장</button></details></form><form method="post" action="{{ url_for('admin.publish_draft', bom_id=version.id) }}" onsubmit="return confirm('이 리비전을 사용자에게 배포하시겠습니까? 기존 배포본은 보관 처리됩니다.')"><button class="btn btn-sm btn-primary">검증 후 배포</button></form><form method="post" action="{{ url_for('admin.delete_draft', bom_id=version.id) }}" onsubmit="return confirm('이 초안을 삭제하시겠습니까? 업로드한 BOM 행과 국가 설정이 모두 삭제되며 되돌릴 수 없습니다.')"><button class="btn btn-sm btn-outline-danger">초안 삭제</button></form></div>{% elif version.status == 'published' and not version.is_withdrawn %}<form method="post" action="{{ url_for('admin.withdraw_bom', bom_id=version.id) }}" onsubmit="return confirm('이 BOM의 배포를 취소하시겠습니까? 사용자의 입력과 제출이 즉시 중단됩니다.')"><input class="form-control form-control-sm mb-1" name="reason" placeholder="취소 사유 (사용자에게 안내)"><button class="btn btn-sm btn-outline-danger">배포 취소</button></form>{% else %}<span class="text-muted small">읽기 전용</span>{% endif %}</td></tr>
   {% endfor %}
   </tbody></table></div>
 </div>
 
+</div>
+<div class="tab-pane fade" id="admin-tab-users">
+
 <div class="admin-grid">
 {% for version in versions if version.status == 'draft' %}<datalist id="bom-parts-{{ version.id }}">{% for part in draft_parts[version.id] %}<option value="{{ part.part_no }}">{{ part.row_num }} · {{ part.part_name }}</option>{% endfor %}</datalist>{% endfor %}
 <div class="portal-card"><h3 class="card-title"><i class="bi bi-people"></i> 사용자</h3><form method="post" action="{{ url_for('admin.create_user') }}" class="admin-user-form"><input name="username" class="form-control" placeholder="사용자명" required><input name="password" type="password" class="form-control" placeholder="초기 비밀번호" required><select name="role" class="form-select"><option value="user">사용자</option><option value="admin">관리자</option></select><button class="btn btn-primary">사용자 생성</button></form><ul class="admin-list">{% for user in users %}<li>{{ user.username }} <span>{{ '관리자' if user.role == 'admin' else '사용자' }}</span></li>{% endfor %}</ul></div>
+</div>
+
+</div>
 </div>
 {% endblock %}
 <script>document.querySelectorAll('form[action*="/rows"] input[name="anchor_part_no"]').forEach(input=>{const form=input.closest('form'), label=form.querySelector('strong'); if(label){const m=label.textContent.match(/Rev\.(\d+)/); const select=[...document.querySelectorAll('datalist')].find(x=>x.id.endsWith(m&&m[1]||'')); if(select) input.setAttribute('list',select.id);}});</script>
