@@ -638,6 +638,22 @@ def bom_version_difference(conn, base_bom_id, compare_bom_id):
 def list_users(conn):
     return [dict(row) for row in conn.execute("SELECT id, username, role, created_at FROM users ORDER BY username").fetchall()]
 
+def count_admins(conn):
+    return conn.execute("SELECT COUNT(*) AS n FROM users WHERE role='admin'").fetchone()["n"]
+
+def update_user_role(conn, user_id, role):
+    conn.execute("UPDATE users SET role=? WHERE id=?", (role, user_id))
+    conn.commit()
+
+def delete_users(conn, user_ids):
+    if not user_ids:
+        return 0
+    placeholders = ",".join("?" for _ in user_ids)
+    conn.execute(f"DELETE FROM bom_category_members WHERE user_id IN ({placeholders})", user_ids)
+    cursor = conn.execute(f"DELETE FROM users WHERE id IN ({placeholders})", user_ids)
+    conn.commit()
+    return cursor.rowcount
+
 def get_or_create_submission(conn, bom_version_id, user_id):
     conn.execute(
         "INSERT OR IGNORE INTO bom_submissions (bom_version_id, user_id) VALUES (?, ?)",
@@ -854,15 +870,6 @@ def set_category_membership(conn, bom_id, user_id, category, member):
         conn.execute("DELETE FROM bom_category_members WHERE bom_id=? AND category=? AND user_id=?", (bom_id, category, user_id))
     conn.commit()
 
-def set_category_members_admin(conn, bom_id, category, user_ids):
-    conn.execute("DELETE FROM bom_category_members WHERE bom_id=? AND category=?", (bom_id, category))
-    now = datetime.datetime.now().isoformat(timespec="seconds")
-    conn.executemany(
-        "INSERT OR IGNORE INTO bom_category_members (bom_id, category, user_id, joined_at) VALUES (?, ?, ?, ?)",
-        [(bom_id, category, user_id, now) for user_id in user_ids],
-    )
-    conn.commit()
-
 def category_owner(conn, bom_id, category):
     """The user whose live input a manager sees/edits for a category on the admin grid."""
     if not category:
@@ -1057,23 +1064,6 @@ def vehicle_country_summary(conn, bom_id=None):
     """, (bom_id,)).fetchall()
     return [dict(r) for r in rows]
 
-def dashboard_case_matrix(conn, bom_id=None):
-    bom_id = _resolve_bom_id(conn, bom_id)
-    countries = list_bom_countries(conn, bom_id)
-    rows = []
-    for part in list_parts(conn, bom_id):
-        values = {}
-        for country in countries:
-            purchase = get_purchase(conn, part["part_no"], part["row_num"], country, bom_id) or {}
-            values[country] = {
-                "material": float(purchase.get("material_cost") or 0),
-                "logistics": float(purchase.get("logistics_cost") or 0),
-                "tariff": float(purchase.get("tariff_cost") or 0),
-                "total": float(purchase.get("total_cost") or 0),
-            }
-        rows.append({"category": part.get("category") or "-", "vehicle": part.get("vehicle") or "-", "part_name": part.get("part_name") or "-", "values": values})
-    return countries, rows
-
 def category_summary(conn, country, bom_id=None):
     bom_id = _resolve_bom_id(conn, bom_id)
     rows = conn.execute("""
@@ -1174,71 +1164,6 @@ def dashboard_report(conn, bom_id=None, vehicle=None):
         "grand_domestic": grand_domestic,
         "grand_overseas": grand_overseas,
     }
-
-def bom_tree(conn, country, vehicle=None, bom_id=None):
-    bom_id = _resolve_bom_id(conn, bom_id)
-    sql = """
-        SELECT p.part_no as part_no, p.row_num as row_num, p.category as category, p.vehicle as vehicle,
-               p.part_name as part_name, p.level_depth as level_depth,
-               CAST(pd.material_cost AS REAL) as material_cost,
-               CAST(pd.logistics_cost AS REAL) as logistics_cost,
-               CAST(pd.tariff_cost AS REAL) as tariff_cost,
-               CAST(pd.total_cost AS REAL) as total_cost
-        FROM bom_parts p LEFT JOIN bom_purchase_data pd
-          ON p.bom_id = pd.bom_id AND p.part_no = pd.part_no AND p.row_num = pd.row_num AND pd.country = ?
-    """
-    params = [country, bom_id]
-    if vehicle:
-        sql += " WHERE p.bom_id = ? AND p.vehicle = ?"
-        params.append(vehicle)
-    else:
-        sql += " WHERE p.bom_id = ?"
-    sql += " ORDER BY p.row_num"
-    rows = conn.execute(sql, params).fetchall()
-
-    categories = {}
-    order = []
-    for r in rows:
-        cat_name = r["category"] or "미분류"
-        if cat_name not in categories:
-            categories[cat_name] = {
-                "name": cat_name, "children": [], "stack": [],
-                "material_sum": 0.0, "logistics_sum": 0.0, "tariff_sum": 0.0, "total_sum": 0.0,
-            }
-            order.append(cat_name)
-        bucket = categories[cat_name]
-
-        material_cost = r["material_cost"] or 0.0
-        logistics_cost = r["logistics_cost"] or 0.0
-        tariff_cost = r["tariff_cost"] or 0.0
-        total_cost = r["total_cost"] or 0.0
-        node = {
-            "part_no": r["part_no"], "part_name": r["part_name"] or "", "vehicle": r["vehicle"] or "",
-            "material_cost": material_cost, "logistics_cost": logistics_cost,
-            "tariff_cost": tariff_cost, "total_cost": total_cost, "children": [],
-        }
-
-        depth = r["level_depth"] if r["level_depth"] is not None else 0
-        stack = bucket["stack"]
-        while stack and stack[-1][0] >= depth:
-            stack.pop()
-        if stack:
-            stack[-1][1]["children"].append(node)
-        else:
-            bucket["children"].append(node)
-        stack.append((depth, node))
-
-        bucket["material_sum"] += material_cost
-        bucket["logistics_sum"] += logistics_cost
-        bucket["tariff_sum"] += tariff_cost
-        bucket["total_sum"] += total_cost
-
-    result = []
-    for cat_name in order:
-        bucket = categories[cat_name]
-        del bucket["stack"]
-        result.append(bucket)
-    return result
 
 def summary_tree(conn, country, bom_id=None):
     bom_id = _resolve_bom_id(conn, bom_id)
