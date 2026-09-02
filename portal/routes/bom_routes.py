@@ -76,8 +76,12 @@ def _filtered_rows(conn, countries, status, search, categories=None, user_id=Non
             for field in ("part_no", "part_name", "category")
         ):
             continue
-        purchase = db.get_user_purchase(conn, p["part_no"], p["row_num"], primary_country, user_id) if user_id else db.get_purchase(conn, p["part_no"], p["row_num"], primary_country)
+        owner = db.category_owner(conn, active["id"], p.get("category")) if user_id is None and active else None
+        effective_user_id = user_id if user_id is not None else (owner["id"] if owner else None)
+        purchase = db.get_user_purchase(conn, p["part_no"], p["row_num"], primary_country, effective_user_id) if effective_user_id else db.get_purchase(conn, p["part_no"], p["row_num"], primary_country)
         row = _build_row_view(p, purchase)
+        row["target_user_id"] = owner["id"] if owner else None
+        row["target_user_name"] = owner["username"] if owner else None
         group = db.group_for_part(conn, active["id"], p["part_no"], p["row_num"]) if active else None
         row["group"] = group
         row["is_group_parent"] = bool(group and group["parent_part_no"] == p["part_no"] and group["parent_row_num"] == p["row_num"])
@@ -89,7 +93,7 @@ def _filtered_rows(conn, countries, status, search, categories=None, user_id=Non
         row["mip"] = any((row["country_data"].get(c, {}).get("sourcing_part") or "") == "MIP" for c in countries) if "country_data" in row else False
         row["assigned"] = is_assigned
         row["country_data"] = {
-            country: _build_row_view(p, db.get_user_purchase(conn, p["part_no"], p["row_num"], country, user_id) if user_id else db.get_purchase(conn, p["part_no"], p["row_num"], country))
+            country: _build_row_view(p, db.get_user_purchase(conn, p["part_no"], p["row_num"], country, effective_user_id) if effective_user_id else db.get_purchase(conn, p["part_no"], p["row_num"], country))
             for country in countries
         }
         row["mip"] = any((row["country_data"][c].get("sourcing_part") or "").upper().startswith("MIP") for c in countries)
@@ -121,7 +125,7 @@ def index():
         "bom.html", countries=COUNTRIES, suggestions=suggestions,
         categories=categories, category_counts=category_counts,
         latest_bom_upload=latest_bom_upload, active_version=active_version, submission=submission,
-        can_edit=current_user.role == "admin" or (submission and submission["status"] in ("draft", "returned")),
+        can_edit=current_user.role != "admin" and (submission and submission["status"] in ("draft", "returned")),
         progress=progress,
     )
 
@@ -198,14 +202,15 @@ def grid():
         material_sum=material_sum, logistics_sum=logistics_sum, total_sum=total_sum,
         # Reuse this list for both case-column management and sourcing choices.
         countries=overseas_countries,
-        sourcing_countries=["KD", "LP", "MIP"] + overseas_countries,
+        sourcing_countries=["KD", "LP", "MIP"],
         assembly_sourcing_options=["KD", "LP", "MIP"],
         selected_countries=selected_countries,
         can_manage_countries=current_user.role == "admin",
         is_admin=current_user.role == "admin",
-        can_edit=current_user.role == "admin" or (scope == "my_bom" and submission and submission["status"] in ("draft", "returned")),
+        can_edit=True if current_user.role == "admin" else (scope == "my_bom" and submission and submission["status"] in ("draft", "returned")),
         assignment_enabled=current_user.role != "admin" and scope == "my_bom",
         show_group_button=current_user.role == "admin" or scope == "my_bom",
+        show_confirm_button=current_user.role == "admin",
         assigned_only=assigned_only,
     )
 
@@ -238,17 +243,14 @@ def add_row():
 def summary():
     country = request.args.get("country", COUNTRIES[0])
     conn = db.get_connection(current_app.config["DB_PATH"])
-    categories = db.bom_tree(conn, country)
+    tree = db.summary_tree(conn, country)
     conn.close()
-    grand_material = sum(c["material_sum"] for c in categories)
-    grand_logistics = sum(c["logistics_sum"] for c in categories)
-    grand_tariff = sum(c["tariff_sum"] for c in categories)
-    grand_total = sum(c["total_sum"] for c in categories)
+    grand = tree["grand"]
     return render_template(
         "partials/_summary.html",
-        categories=categories, country=country, countries=COUNTRIES,
-        grand_material=grand_material, grand_logistics=grand_logistics,
-        grand_tariff=grand_tariff, grand_total=grand_total,
+        majors=tree["majors"], country=country, countries=COUNTRIES,
+        grand_material=grand["material_sum"], grand_logistics=grand["logistics_sum"],
+        grand_tariff=grand["tariff_sum"], grand_total=grand["total_sum"],
     )
 
 @bom_bp.route("/row/<part_no>/<int:row_num>/<country>", methods=["POST"])
@@ -282,6 +284,8 @@ def save_row(row_num, country, part_no=None):
         target_countries = [name.split("__", 1)[0] for name in request.form if "__" in name]
     target_countries = target_countries or [country]
     target_countries = list(dict.fromkeys(target_countries))
+    owner = db.category_owner(conn, active_version["id"], part.get("category")) if current_user.role == "admin" else None
+    target_user_id = owner["id"] if owner else None
     field_errors = []
     country_results = {}
     for target_country in target_countries:
@@ -292,16 +296,20 @@ def save_row(row_num, country, part_no=None):
         calculated = calc.recalculate_purchase_row(conn, part_no, row_num, target_country, fields)
         field_errors.extend(calculated.pop("field_errors", []))
         if current_user.role == "admin":
-            db.upsert_purchase(conn, part_no, row_num, target_country, calculated, updated_by=current_user.username)
+            if target_user_id:
+                db.upsert_user_purchase(conn, part_no, row_num, target_country, target_user_id, calculated, updated_by=current_user.username)
+            else:
+                db.upsert_purchase(conn, part_no, row_num, target_country, calculated, updated_by=current_user.username)
         else:
             db.upsert_user_purchase(conn, part_no, row_num, target_country, int(current_user.id), calculated, updated_by=current_user.username)
         country_results[target_country] = calculated
     part = db.get_part(conn, part_no, row_num)
-    purchase = db.get_purchase(conn, part_no, row_num, country) if current_user.role == "admin" else db.get_user_purchase(conn, part_no, row_num, country, int(current_user.id))
+    effective_user_id = target_user_id if current_user.role == "admin" else int(current_user.id)
+    purchase = db.get_user_purchase(conn, part_no, row_num, country, effective_user_id) if effective_user_id else db.get_purchase(conn, part_no, row_num, country)
     completion_countries = db.list_bom_countries(conn, active_version["id"])
     completion_values = [
-        db.get_purchase(conn, part_no, row_num, configured_country) if current_user.role == "admin"
-        else db.get_user_purchase(conn, part_no, row_num, configured_country, int(current_user.id))
+        db.get_user_purchase(conn, part_no, row_num, configured_country, effective_user_id) if effective_user_id
+        else db.get_purchase(conn, part_no, row_num, configured_country)
         for configured_country in completion_countries
     ]
     conn.close()
@@ -344,6 +352,7 @@ def submit():
         db.get_or_create_submission(conn, active["id"], int(current_user.id))
         db.save_submission_snapshot(conn, active["id"], int(current_user.id))
         db.update_submission_status(conn, active["id"], int(current_user.id), "submitted")
+        db.notify_admins(conn, "BOM 제출", f"{current_user.username}님이 {active['name']} 제출을 요청했습니다.", link=url_for("admin.reviews"))
     conn.close()
     return jsonify({"ok": True, "message": "검토 요청으로 제출했습니다."})
 
@@ -379,9 +388,30 @@ def my_assignments():
     active = db.get_active_bom_version(conn)
     submission = db.get_or_create_submission(conn, active["id"], int(current_user.id)) if active else None
     parts = db.list_current_assignments(conn, active["id"], int(current_user.id)) if active else []
+    categories = db.list_categories(conn, active["id"]) if active else []
+    my_categories = db.get_user_categories(conn, active["id"], int(current_user.id)) if active else set()
     conn.close()
     can_cancel = bool(submission) and submission["status"] in ("draft", "returned")
-    return render_template("my_assignments.html", parts=parts, submission=submission, can_cancel=can_cancel, active_version=active)
+    return render_template("my_assignments.html", parts=parts, submission=submission, can_cancel=can_cancel, active_version=active, categories=categories, my_categories=my_categories)
+
+@bom_bp.route("/categories/<category>", methods=["POST"])
+@login_required
+def set_category_membership(category):
+    if current_user.role == "admin":
+        return jsonify({"ok": False, "message": "관리자는 담당 구분을 선택하지 않습니다."}), 403
+    conn = db.get_connection(current_app.config["DB_PATH"])
+    active = db.get_active_bom_version(conn)
+    if not active:
+        conn.close()
+        return jsonify({"ok": False, "message": "배포된 BOM이 없습니다."}), 404
+    submission = db.get_or_create_submission(conn, active["id"], int(current_user.id))
+    if submission["status"] not in ("draft", "returned"):
+        conn.close()
+        return jsonify({"ok": False, "message": "제출된 BOM은 담당 구분을 변경할 수 없습니다."}), 403
+    member = request.form.get("member") in ("1", "true", "on")
+    db.set_category_membership(conn, active["id"], int(current_user.id), category, member)
+    conn.close()
+    return jsonify({"ok": True, "category": category, "member": member})
 
 @bom_bp.route("/reset-work", methods=["POST"])
 @login_required

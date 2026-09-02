@@ -2,12 +2,31 @@
 {% block title %}내 담당 품목 | 재료비 관리 포탈{% endblock %}
 {% block content %}
 <h1>내 담당 품목</h1>
-<p class="text-muted mb-4">내가 담당으로 선택한 품목 목록입니다. 제출 전(작성 중/반려 상태)에만 취소할 수 있습니다.</p>
+{% if submission and submission.status == 'auto_submitted' %}<div class="alert alert-warning">마감기한이 지나 입력 내용이 <span class="badge text-bg-warning">자동제출</span> 처리되었습니다.</div>{% endif %}
+{% if active_version and active_version.due_date %}<p class="text-muted small">마감기한: {{ active_version.due_date.replace('T', ' ') }}</p>{% endif %}
+<p class="text-muted mb-3">담당할 구분(카테고리)을 직접 선택하면 해당 구분의 모든 품목이 내 담당으로 지정됩니다. 제출 전(작성 중/반려 상태)에만 변경할 수 있습니다.</p>
+<div class="portal-card mb-4"><h3 class="card-title">담당 구분 선택</h3><div class="category-checkbox-list d-flex flex-wrap gap-3">{% for category in categories %}<label class="form-check"><input type="checkbox" class="form-check-input category-toggle" data-url="{{ url_for('bom.set_category_membership', category=category) }}" {% if category in my_categories %}checked{% endif %} {% if not can_cancel %}disabled{% endif %}> {{ category }}</label>{% else %}<span class="text-muted small">구분 정보가 없습니다.</span>{% endfor %}</div></div>
+<p class="text-muted mb-4">아래는 담당 구분 및 개별 지정으로 확보된 품목 목록입니다.</p>
 <div class="portal-card p-0 overflow-hidden"><table class="table mb-0 align-middle review-table"><thead><tr><th>차종</th><th>구분</th><th>품번</th><th>품명</th><th></th></tr></thead><tbody id="my-assignments-body">
 {% for part in parts %}<tr data-row-num="{{ part.row_num }}"><td>{{ part.vehicle or '-' }}</td><td>{{ part.category or '-' }}</td><td>{{ part.part_no }}</td><td>{{ part.part_name }}</td><td>{% if can_cancel %}<button type="button" class="btn btn-sm btn-outline-secondary cancel-assignment-btn" data-url="{{ url_for('bom.set_assignment', row_num=part.row_num) }}">취소</button>{% else %}<span class="text-muted small">제출됨</span>{% endif %}</td></tr>
 {% else %}<tr><td colspan="5" class="text-center text-muted py-5">담당으로 선택한 품목이 없습니다.</td></tr>{% endfor %}
 </tbody></table></div>
 <script>
+document.addEventListener('change', async (event) => {
+  const checkbox = event.target.closest('.category-toggle');
+  if (!checkbox) return;
+  checkbox.disabled = true;
+  try {
+    const response = await fetch(checkbox.dataset.url, {method: 'POST', headers: {'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded'}, body: `member=${checkbox.checked ? '1' : '0'}`});
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.message || '변경에 실패했습니다.');
+  } catch (error) {
+    alert(error.message);
+    checkbox.checked = !checkbox.checked;
+  } finally {
+    checkbox.disabled = false;
+  }
+});
 document.addEventListener('click', async (event) => {
   const button = event.target.closest('.cancel-assignment-btn');
   if (!button) return;

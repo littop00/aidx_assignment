@@ -40,6 +40,14 @@ def create_app(db_path=None):
         response.headers["Cache-Control"] = "no-store"
         return response
 
+    @app.before_request
+    def enforce_bom_due_dates():
+        if not current_user.is_authenticated:
+            return
+        conn = db.get_connection(app.config["DB_PATH"])
+        db.enforce_due_dates(conn)
+        conn.close()
+
     @app.context_processor
     def navigation_context():
         if not current_user.is_authenticated:

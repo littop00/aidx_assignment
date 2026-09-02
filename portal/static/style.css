@@ -490,6 +490,7 @@ tr.row-highlight td { animation:row-highlight-flash 1.6s ease; }
 .admin-country-form { width:100%; margin:0; }
 .admin-country-form summary { cursor:pointer; color:var(--portal-accent); font-weight:600; }
 .admin-country-form details > div { display:grid; grid-template-columns:repeat(3, minmax(80px,1fr)); max-height:150px; overflow:auto; padding:.5rem; }
+.admin-country-form .country-search { margin:.4rem 0 0; }
 .admin-version-table { max-height:none; overflow-x:auto; overflow-y:visible; }
 .admin-version-table .bom-table thead,
 .admin-version-table .bom-table th { position:static; }

@@ -1,5 +1,5 @@
 DESIGN_FIELDS = [
-    ("vehicle", 2), ("category", 3), ("part_name", 12), ("part_no", 13),
+    ("vehicle", 2), ("category", 3), ("sub_category", 4), ("part_name", 12), ("part_no", 13),
     ("spec", 14), ("config_1", 15), ("config_2", 16), ("config_3", 17),
     ("config_4", 18), ("qty", 19), ("material", 20), ("surface", 21),
     ("spec2", 22), ("width", 23), ("depth_len", 24), ("height", 25),

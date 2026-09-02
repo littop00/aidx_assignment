@@ -1,0 +1,14 @@
+{% set settings = logistics_settings[version.id] %}
+<form method="post" action="{{ url_for('admin.set_logistics_settings', bom_id=version.id) }}" class="admin-logistics-settings-form"><details><summary>물류 기준 설정</summary>
+<div class="row g-1 mb-1">
+  <div class="col"><label class="form-label small mb-0">박스 가로(mm)</label><input type="number" step="any" name="box_width" class="form-control form-control-sm" value="{{ settings.box_width or '' }}"></div>
+  <div class="col"><label class="form-label small mb-0">박스 세로(mm)</label><input type="number" step="any" name="box_depth" class="form-control form-control-sm" value="{{ settings.box_depth or '' }}"></div>
+  <div class="col"><label class="form-label small mb-0">박스 높이(mm)</label><input type="number" step="any" name="box_height" class="form-control form-control-sm" value="{{ settings.box_height or '' }}"></div>
+</div>
+<div class="row g-1 mb-1">
+  <div class="col"><label class="form-label small mb-0">컨테이너당 박스수</label><input type="number" step="any" name="boxes_per_container" class="form-control form-control-sm" value="{{ settings.boxes_per_container or '' }}"></div>
+  <div class="col"><label class="form-label small mb-0">컨테이너 중량한도(kg)</label><input type="number" step="any" name="container_weight_limit_kg" class="form-control form-control-sm" value="{{ settings.container_weight_limit_kg or '' }}"></div>
+  <div class="col"><label class="form-label small mb-0">수출포장비(원/대포장)</label><input type="number" step="any" name="export_packaging_cost" class="form-control form-control-sm" value="{{ settings.export_packaging_cost or '' }}"></div>
+</div>
+<button class="btn btn-sm btn-outline-secondary">물류 기준 저장</button>
+</details></form>
