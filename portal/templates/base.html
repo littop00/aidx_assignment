@@ -36,11 +36,6 @@
                     </a>
                 </li>
                 <li>
-                    <a href="{{ url_for('bom.my_assignments') }}" class="{% if request.endpoint == 'bom.my_assignments' %}active{% endif %}">
-                        <i class="bi bi-person-check"></i> 내 담당 품목
-                    </a>
-                </li>
-                <li>
                     <a href="{{ url_for('bom.submissions') }}" class="{% if request.endpoint and request.endpoint.startswith('bom.submission') %}active{% endif %}">
                         <i class="bi bi-send-check"></i> 내 제출 현황
                     </a>

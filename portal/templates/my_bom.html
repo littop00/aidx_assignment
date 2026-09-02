@@ -21,7 +21,7 @@ document.getElementById('show-unassigned-check')?.addEventListener('change', (ev
 document.addEventListener('click', async (event) => {
   const button = event.target.closest('#group-selected-btn');
   if (!button) return;
-  const selected = [...document.querySelectorAll('.row-select:checked')];
+  const selected = [...document.querySelectorAll('.row-select:checked, .assignment-toggle:checked')];
   if (selected.length < 2) { window.showToast?.('그룹으로 지정할 행을 두 개 이상 선택하세요.', true); return; }
   try {
     const data = new URLSearchParams(); selected.forEach(item => data.append('row_num', item.dataset.rowNum));
@@ -34,10 +34,23 @@ document.addEventListener('click', async (event) => {
     window.showToast?.(result.removed ? '그룹 지정을 해제했습니다.' : `선택한 ${selected.length}개 품목을 그룹으로 지정했습니다.`);
   } catch (error) { window.showToast?.(error.message || '그룹 변경에 실패했습니다.', true); }
 });
+function refreshAssignmentAccess(initialize = false) {
+  document.querySelectorAll('.assignment-toggle').forEach((checkbox) => {
+    if (initialize && !checkbox.dataset.saved) checkbox.dataset.saved = checkbox.checked ? 'true' : 'false';
+    const isSavedAssignment = checkbox.dataset.saved === 'true';
+    checkbox.closest('tr').querySelectorAll('.row-autosave, .save-row-btn').forEach((field) => { field.disabled = !isSavedAssignment; });
+  });
+  const saveButton = document.getElementById('save-assignments-btn');
+  if (saveButton) saveButton.disabled = ![...document.querySelectorAll('.assignment-toggle')].some((checkbox) => checkbox.checked !== (checkbox.dataset.saved === 'true'));
+}
+document.addEventListener('htmx:afterSwap', () => refreshAssignmentAccess(true));
 document.addEventListener('change', (event) => {
   if (event.target.id === 'select-all') {
-    document.querySelectorAll('.row-select').forEach((checkbox) => { checkbox.checked = event.target.checked; });
+    document.querySelectorAll('.assignment-toggle').forEach((checkbox) => { checkbox.checked = event.target.checked; });
+    refreshAssignmentAccess();
+    return;
   }
+  if (event.target.matches('.assignment-toggle')) refreshAssignmentAccess();
 });
 document.addEventListener('click', async (event) => {
   const resetButton = event.target.closest('#reset-my-work-btn');
@@ -54,8 +67,29 @@ document.addEventListener('click', async (event) => {
       alert(error.message);
       resetButton.disabled = false;
     }
+    return;
+  }
+  const button = event.target.closest('#save-assignments-btn');
+  if (!button) return;
+  const changed = [...document.querySelectorAll('.assignment-toggle')].filter((checkbox) => checkbox.checked !== (checkbox.dataset.saved === 'true'));
+  if (!changed.length) return;
+  button.disabled = true;
+  try {
+    const results = await Promise.all(changed.map(async (checkbox) => {
+      const response = await fetch(checkbox.dataset.url, {method: 'POST', headers: {'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded'}, body: new URLSearchParams({assigned: checkbox.checked ? '1' : '0'})});
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.message || '담당 품목 저장에 실패했습니다.');
+      return payload;
+    }));
+    changed.forEach((checkbox) => { checkbox.dataset.saved = checkbox.checked ? 'true' : 'false'; });
+    refreshAssignmentAccess();
+    alert(`담당 품목 ${results.at(-1).count}건을 저장했습니다.`);
+  } catch (error) {
+    alert(error.message);
+    refreshAssignmentAccess();
   }
 });
+document.addEventListener('DOMContentLoaded', () => refreshAssignmentAccess(true));
 document.addEventListener('submit', async (event) => {
   const form = event.target.closest('#add-bom-row-form');
   if (!form) return;
