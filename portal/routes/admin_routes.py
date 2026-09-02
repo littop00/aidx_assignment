@@ -34,30 +34,15 @@ def bom_versions():
     users = db.list_users(conn)
     draft_parts = {version["id"]: db.list_parts(conn, version["id"]) for version in versions if version["status"] == "draft"}
     categories_by_version = {version["id"]: db.list_categories(conn, version["id"]) for version in versions}
-    category_members = {version["id"]: db.list_category_members(conn, version["id"]) for version in versions}
     logistics_settings = {version["id"]: (db.get_logistics_settings(conn, version["id"]) or {}) for version in versions}
     logistics_rates = logistics.list_latest_rates(conn)
-    conn.close()
     user_categories = {}
     if active:
-        for category, members in category_members.get(active["id"], {}).items():
+        for category, members in db.list_category_members(conn, active["id"]).items():
             for member in members:
                 user_categories.setdefault(member["id"], []).append(category)
-    member_ids_by_category = {
-        version_id: {category: [m["id"] for m in members] for category, members in members_by_category.items()}
-        for version_id, members_by_category in category_members.items()
-    }
-    user_categories_by_version = {
-        version_id: {member["id"]: cats for member in [m for members in members_by_category.values() for m in members] for cats in [[]]}
-        for version_id, members_by_category in category_members.items()
-    }
-    for version_id, members_by_category in category_members.items():
-        per_user = {}
-        for category, members in members_by_category.items():
-            for member in members:
-                per_user.setdefault(member["id"], []).append(category)
-        user_categories_by_version[version_id] = per_user
-    return render_template("admin_boms.html", versions=versions, active=active, countries=countries, version_countries=version_countries, differences=differences, submissions=submissions, users=users, draft_parts=draft_parts, design_fields=DESIGN_FIELDS, categories_by_version=categories_by_version, category_members=category_members, member_ids_by_category=member_ids_by_category, user_categories_by_version=user_categories_by_version, logistics_settings=logistics_settings, logistics_rates=logistics_rates, user_categories=user_categories)
+    conn.close()
+    return render_template("admin_boms.html", versions=versions, active=active, countries=countries, version_countries=version_countries, differences=differences, submissions=submissions, users=users, draft_parts=draft_parts, design_fields=DESIGN_FIELDS, categories_by_version=categories_by_version, logistics_settings=logistics_settings, logistics_rates=logistics_rates, user_categories=user_categories)
 
 @admin_bp.route("/boms/draft", methods=["POST"])
 @admin_required
@@ -210,14 +195,19 @@ def set_due_date(bom_id):
     flash("마감기한을 저장했습니다.")
     return redirect(url_for("admin.bom_versions"))
 
-@admin_bp.route("/boms/<int:bom_id>/categories/<category>", methods=["POST"])
+@admin_bp.route("/users/<int:user_id>/categories", methods=["POST"])
 @admin_required
-def set_category_members(bom_id, category):
+def set_user_categories(user_id):
     conn = db.get_connection(current_app.config["DB_PATH"])
-    user_ids = [int(v) for v in request.form.getlist("user_id")]
-    db.set_category_members_admin(conn, bom_id, category, user_ids)
+    active = db.get_active_bom_version(conn)
+    if not active:
+        conn.close()
+        return jsonify({"ok": False, "message": "확정된 BOM이 없습니다."}), 400
+    selected = set(request.form.getlist("categories"))
+    for category in db.list_categories(conn, active["id"]):
+        db.set_category_membership(conn, active["id"], user_id, category, category in selected)
     conn.close()
-    return jsonify({"ok": True, "message": f"'{category}' 담당자 풀을 저장했습니다.", "category": category, "user_ids": user_ids})
+    return jsonify({"ok": True, "message": "담당 품목을 저장했습니다.", "categories": sorted(selected)})
 
 @admin_bp.route("/boms/<int:bom_id>/rows", methods=["POST"])
 @admin_required
@@ -280,6 +270,38 @@ def create_user():
     conn.close()
     return jsonify({"ok": True, "message": f"{username} 사용자를 만들었습니다.", "user": {"id": user["id"] if user else None, "username": username, "role": role, "categories": categories}})
 
+@admin_bp.route("/users/<int:user_id>/role", methods=["POST"])
+@admin_required
+def update_user_role(user_id):
+    role = request.form.get("role")
+    if role not in ("admin", "user"):
+        return jsonify({"ok": False, "message": "잘못된 권한 값입니다."}), 400
+    if user_id == current_user.id:
+        return jsonify({"ok": False, "message": "본인의 권한은 변경할 수 없습니다."}), 400
+    conn = db.get_connection(current_app.config["DB_PATH"])
+    if role == "user" and db.count_admins(conn) <= 1:
+        conn.close()
+        return jsonify({"ok": False, "message": "최소 1명의 관리자가 있어야 합니다."}), 400
+    db.update_user_role(conn, user_id, role)
+    conn.close()
+    return jsonify({"ok": True, "message": "권한을 변경했습니다."})
+
+@admin_bp.route("/users/delete", methods=["POST"])
+@admin_required
+def delete_users():
+    user_ids = [int(v) for v in request.form.getlist("user_id")]
+    user_ids = [uid for uid in user_ids if uid != current_user.id]
+    if not user_ids:
+        return jsonify({"ok": False, "message": "삭제할 사용자를 선택해 주세요."}), 400
+    conn = db.get_connection(current_app.config["DB_PATH"])
+    remaining_admins = db.count_admins(conn) - sum(1 for u in db.list_users(conn) if u["id"] in user_ids and u["role"] == "admin")
+    if remaining_admins < 1:
+        conn.close()
+        return jsonify({"ok": False, "message": "최소 1명의 관리자가 있어야 합니다."}), 400
+    deleted = db.delete_users(conn, user_ids)
+    conn.close()
+    return jsonify({"ok": True, "message": f"{deleted}명의 사용자를 삭제했습니다.", "deleted_ids": user_ids})
+
 @admin_bp.route("/reviews")
 @admin_required
 def reviews():
@@ -336,7 +358,10 @@ def confirm_rows():
     if not active:
         conn.close()
         return jsonify({"ok": False, "message": "배포된 BOM이 없습니다."}), 404
-    row_nums = sorted({int(value) for value in request.form.getlist("row_num")})
+    if request.form.get("all") == "1":
+        row_nums = sorted({r["row_num"] for r in conn.execute("SELECT DISTINCT row_num FROM bom_parts WHERE bom_id=?", (active["id"],)).fetchall()})
+    else:
+        row_nums = sorted({int(value) for value in request.form.getlist("row_num")})
     extra = ("sourcing_part_location", "sourcing_assembly_location", "special_fx_rate", "special_fx_reason")
     confirmed = 0
     for row_num in row_nums:

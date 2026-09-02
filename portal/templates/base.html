@@ -237,12 +237,6 @@
                 label.style.display = label.textContent.toLowerCase().includes(keyword) ? "" : "none";
             });
         }
-        if (event.target.matches(".user-search")) {
-            const keyword = event.target.value.trim().toLowerCase();
-            event.target.closest(".category-assign-block")?.querySelectorAll(".user-check-row").forEach((label) => {
-                label.style.display = label.dataset.username.includes(keyword) ? "" : "none";
-            });
-        }
     });
 
     document.addEventListener("change", (event) => {

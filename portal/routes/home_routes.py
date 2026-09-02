@@ -28,21 +28,19 @@ def index():
     active_version = db.get_active_bom_version(conn)
     active_bom_id = active_version["id"] if active_version else None
     vehicle_summary = db.vehicle_country_summary(conn, active_bom_id)
-    case_countries, case_matrix = db.dashboard_case_matrix(conn, active_bom_id)
-    dashboard_cases = []
-    for country in case_countries:
-        categories = db.bom_tree(conn, country, selected_vehicle, active_bom_id)
-        dashboard_cases.append({
-            "country": country,
-            "title": "국내" if country == "한국" else country,
-            "subtitle": "재료비 기준" if country == "한국" else "해외 비용 기준",
-            "categories": categories,
-            "material_total": sum(category["material_sum"] for category in categories),
-            "logistics_total": sum(category["logistics_sum"] for category in categories),
-            "total": sum(category["total_sum"] for category in categories),
-        })
-    latest_bom_upload = db.get_latest_bom_upload(conn)
     report = db.dashboard_report(conn, active_bom_id, selected_vehicle)
+    for major in report["majors"]:
+        dom_total = {"material": 0.0, "logistics": 0.0, "tariff": 0.0, "total": 0.0}
+        over_total = {c: {"material_lp": 0.0, "material_kd": 0.0, "material_total": 0.0, "logistics": 0.0, "tariff": 0.0, "total": 0.0} for c in report["overseas_countries"]}
+        for cat in major["categories"]:
+            for key in dom_total:
+                dom_total[key] += cat["domestic"][key]
+            for country in report["overseas_countries"]:
+                for key in over_total[country]:
+                    over_total[country][key] += cat["overseas"][country][key]
+        major["domestic_total"] = dom_total
+        major["overseas_total"] = over_total
+    latest_bom_upload = db.get_latest_bom_upload(conn)
     conn.close()
     domestic_rows = [row for row in vehicle_summary if row["country"] == "한국"]
     overseas_rows = [row for row in vehicle_summary if row["country"] != "한국"]
@@ -63,13 +61,10 @@ def index():
         overseas_case_total=overseas_case_total,
         latest_bom_upload=latest_bom_upload,
         case_summary=case_summary,
-        case_countries=case_countries,
-        case_matrix=case_matrix,
-        dashboard_cases=dashboard_cases,
+        report=report,
         vehicles=vehicles,
         selected_vehicle=selected_vehicle,
         active_version=active_version,
-        report=report,
     )
 
 @home_bp.route("/export/dashboard.xlsx")

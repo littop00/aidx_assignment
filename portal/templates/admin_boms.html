@@ -34,11 +34,8 @@
 </div>
 <div class="tab-pane fade" id="admin-tab-users">
 
-<div class="admin-grid">
 {% for version in versions if version.status == 'draft' %}<datalist id="bom-parts-{{ version.id }}">{% for part in draft_parts[version.id] %}<option value="{{ part.part_no }}">{{ part.row_num }} · {{ part.part_name }}</option>{% endfor %}</datalist>{% endfor %}
-<div class="portal-card"><h3 class="card-title"><i class="bi bi-people"></i> 사용자</h3><form id="create-user-form" method="post" action="{{ url_for('admin.create_user') }}" class="admin-user-form"><input name="username" class="form-control" placeholder="사용자명" required><input name="password" type="password" class="form-control" placeholder="초기 비밀번호" required><select name="role" class="form-select"><option value="user">사용자</option><option value="admin">관리자</option></select>{% if active and categories_by_version.get(active.id) %}<div class="create-user-categories">{% for category in categories_by_version[active.id] %}<label class="form-check form-check-inline"><input class="form-check-input" type="checkbox" name="categories" value="{{ category }}"> {{ category }}</label>{% endfor %}</div>{% endif %}<button class="btn btn-primary">사용자 생성</button></form><ul class="admin-list" id="admin-user-list">{% for user in users %}<li data-user-id="{{ user.id }}">{{ user.username }} <span>{{ '관리자' if user.role == 'admin' else '사용자' }}</span>{% if user_categories.get(user.id) %} <span class="badge text-bg-primary user-cat-badge">{{ user_categories[user.id]|join(', ') }}</span>{% endif %}</li>{% endfor %}</ul></div>
-<div class="portal-card"><h3 class="card-title"><i class="bi bi-diagram-3"></i> 담당 구분 배정</h3>{% for version in versions if version.status in ('draft', 'published') and not version.is_withdrawn %}<p class="fw-bold small mb-1">Rev.{{ version.version_no }} {{ version.name }}</p>{% include 'partials/_category_members.html' %}{% endfor %}</div>
-</div>
+<div class="portal-card"><h3 class="card-title"><i class="bi bi-people"></i> 사용자 등록/관리</h3><form id="create-user-form" method="post" action="{{ url_for('admin.create_user') }}" class="admin-user-form"><input name="username" class="form-control" placeholder="사용자명" required><input name="password" type="password" class="form-control" placeholder="초기 비밀번호" required><select name="role" class="form-select"><option value="user">사용자</option><option value="admin">관리자</option></select>{% if active and categories_by_version.get(active.id) %}<div class="dropdown create-user-categories-dropdown"><button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle category-select-button" data-bs-toggle="dropdown" data-bs-display="static">담당 지정</button><div class="dropdown-menu category-menu p-2">{% for category in categories_by_version[active.id] %}<div class="form-check category-check"><input class="form-check-input" type="checkbox" name="categories" value="{{ category }}" id="create-cat-{{ loop.index }}"><label class="form-check-label" for="create-cat-{{ loop.index }}">{{ category }}</label></div>{% endfor %}</div></div>{% endif %}<button class="btn btn-primary">사용자 생성</button></form><div class="admin-user-table-toolbar"><input type="text" class="form-control form-control-sm admin-user-search" placeholder="사용자 검색"><button type="button" id="admin-user-categories-save-btn" class="btn btn-sm btn-primary">담당 품목 저장</button><button type="button" id="admin-user-delete-btn" class="btn btn-sm btn-outline-danger">선택 삭제</button></div><div class="table-responsive"><table class="table bom-table admin-user-table" id="admin-user-table"><thead><tr><th></th><th>사용자 ID</th><th>권한</th><th>담당 품목</th></tr></thead><tbody>{% for user in users %}<tr data-user-id="{{ user.id }}" data-username="{{ user.username|lower }}"><td><input type="checkbox" class="user-row-check" value="{{ user.id }}"{% if user.id == current_user.id %} disabled{% endif %}></td><td>{{ user.username }}</td><td><select class="form-select form-select-sm admin-role-select" data-user-id="{{ user.id }}"{% if user.id == current_user.id %} disabled{% endif %}><option value="user" {% if user.role == 'user' %}selected{% endif %}>사용자</option><option value="admin" {% if user.role == 'admin' %}selected{% endif %}>관리자</option></select></td><td>{% if active and categories_by_version.get(active.id) %}<div class="dropdown user-categories-picker" data-user-id="{{ user.id }}"><button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle category-select-button{% if user_categories.get(user.id) %} has-selection{% endif %}" data-bs-toggle="dropdown" data-bs-display="static">{% if user_categories.get(user.id) %}선택: {{ user_categories[user.id]|join(', ') }}{% else %}담당 지정{% endif %}</button><div class="dropdown-menu category-menu p-2">{% for category in categories_by_version[active.id] %}<div class="form-check category-check"><input class="form-check-input user-category-check" type="checkbox" value="{{ category }}" id="user-cat-{{ user.id }}-{{ loop.index }}"{% if category in user_categories.get(user.id, []) %} checked{% endif %}><label class="form-check-label" for="user-cat-{{ user.id }}-{{ loop.index }}">{{ category }}</label></div>{% endfor %}</div></div>{% else %}<span class="text-muted small">-</span>{% endif %}</td></tr>{% endfor %}</tbody></table></div></div>
 
 </div>
 <div class="tab-pane fade" id="admin-tab-logistics">
@@ -65,7 +62,6 @@
 
 </div>
 </div>
-{% endblock %}
 <script>document.querySelectorAll('form[action*="/rows"] input[name="anchor_part_no"]').forEach(input=>{const form=input.closest('form'), label=form.querySelector('strong'); if(label){const m=label.textContent.match(/Rev\.(\d+)/); const select=[...document.querySelectorAll('datalist')].find(x=>x.id.endsWith(m&&m[1]||'')); if(select) input.setAttribute('list',select.id);}});</script>
 <script>
 document.addEventListener('click', (event) => {
@@ -88,68 +84,156 @@ document.addEventListener('submit', async (event) => {
     const response = await fetch(form.action, {method: 'POST', headers: {'Accept': 'application/json'}, body: new FormData(form)});
     const result = await response.json();
     if (!response.ok) throw new Error(result.message);
-    const list = document.getElementById('admin-user-list');
-    const li = document.createElement('li');
-    li.dataset.userId = result.user.id;
-    li.appendChild(document.createTextNode(result.user.username + ' '));
-    const roleSpan = document.createElement('span');
-    roleSpan.textContent = result.user.role === 'admin' ? '관리자' : '사용자';
-    li.appendChild(roleSpan);
-    if (result.user.categories.length) {
-      const catSpan = document.createElement('span');
-      catSpan.className = 'badge text-bg-primary user-cat-badge';
-      catSpan.textContent = ' ' + result.user.categories.join(', ');
-      li.appendChild(catSpan);
+    const tbody = document.querySelector('#admin-user-table tbody');
+    const tr = document.createElement('tr');
+    tr.dataset.userId = result.user.id;
+    tr.dataset.username = result.user.username.toLowerCase();
+    const checkTd = document.createElement('td');
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox'; checkbox.className = 'user-row-check'; checkbox.value = result.user.id;
+    checkTd.appendChild(checkbox);
+    const nameTd = document.createElement('td');
+    nameTd.textContent = result.user.username;
+    const roleTd = document.createElement('td');
+    const roleSelect = document.createElement('select');
+    roleSelect.className = 'form-select form-select-sm admin-role-select';
+    roleSelect.dataset.userId = result.user.id;
+    ['user', 'admin'].forEach((value) => {
+      const option = document.createElement('option');
+      option.value = value; option.textContent = value === 'admin' ? '관리자' : '사용자';
+      if (value === result.user.role) option.selected = true;
+      roleSelect.appendChild(option);
+    });
+    roleTd.appendChild(roleSelect);
+    const catTd = document.createElement('td');
+    const createDropdown = form.querySelector('.create-user-categories-dropdown');
+    if (createDropdown) {
+      const categoryValues = [...createDropdown.querySelectorAll('.form-check-input')].map((cb) => cb.value);
+      const picker = document.createElement('div');
+      picker.className = 'dropdown user-categories-picker';
+      picker.dataset.userId = result.user.id;
+      const pickerButton = document.createElement('button');
+      pickerButton.type = 'button';
+      pickerButton.className = 'btn btn-outline-secondary btn-sm dropdown-toggle category-select-button';
+      pickerButton.setAttribute('data-bs-toggle', 'dropdown');
+      pickerButton.setAttribute('data-bs-display', 'static');
+      pickerButton.textContent = result.user.categories.length ? `선택: ${result.user.categories.join(', ')}` : '담당 지정';
+      if (result.user.categories.length) pickerButton.classList.add('has-selection');
+      const menu = document.createElement('div');
+      menu.className = 'dropdown-menu category-menu p-2';
+      categoryValues.forEach((cat, idx) => {
+        const wrap = document.createElement('div'); wrap.className = 'form-check category-check';
+        const input = document.createElement('input');
+        input.type = 'checkbox'; input.className = 'form-check-input';
+        input.value = cat; input.id = `user-cat-${result.user.id}-${idx + 1}`;
+        if (result.user.categories.includes(cat)) input.checked = true;
+        const label = document.createElement('label');
+        label.className = 'form-check-label'; label.htmlFor = input.id; label.textContent = cat;
+        wrap.append(input, label);
+        menu.appendChild(wrap);
+      });
+      picker.append(pickerButton, menu);
+      catTd.appendChild(picker);
+    } else {
+      const dash = document.createElement('span');
+      dash.className = 'text-muted small'; dash.textContent = '-';
+      catTd.appendChild(dash);
     }
-    list.appendChild(li);
+    tr.append(checkTd, nameTd, roleTd, catTd);
+    tbody.appendChild(tr);
     form.reset();
+    form.querySelectorAll('.create-user-categories-dropdown .form-check-input').forEach((box) => box.checked = false);
+    const dropdownButton = form.querySelector('.create-user-categories-dropdown .category-select-button');
+    if (dropdownButton) { dropdownButton.textContent = '담당 지정'; dropdownButton.classList.remove('has-selection'); }
     alert(result.message);
   } catch (error) {
     alert(error.message || '사용자 생성에 실패했습니다.');
   }
 });
-</script>
-<script>
-function initCategoryBlock(block) {
-  const dataEl = block.querySelector('.category-members-data');
-  const select = block.querySelector('.category-select');
-  if (!dataEl || !select) return;
-  const applyCategory = (category) => {
-    const memberData = JSON.parse(dataEl.textContent || '{}');
-    const ids = (memberData[category] || []).map(String);
-    block.querySelectorAll('.user-check').forEach((box) => { box.checked = ids.includes(box.value); });
-  };
-  applyCategory(select.value);
-  select.addEventListener('change', () => applyCategory(select.value));
-}
-document.querySelectorAll('.category-assign-block').forEach(initCategoryBlock);
-
+document.addEventListener('change', (event) => {
+  const box = event.target.closest('.create-user-categories-dropdown .form-check-input, .user-categories-picker .form-check-input');
+  if (!box) return;
+  const dropdown = box.closest('.create-user-categories-dropdown, .user-categories-picker');
+  const selected = [...dropdown.querySelectorAll('.form-check-input:checked')];
+  const button = dropdown.querySelector('.category-select-button');
+  button.textContent = selected.length ? `선택: ${selected.map((s) => s.value).join(', ')}` : '담당 지정';
+  button.classList.toggle('has-selection', selected.length > 0);
+});
 document.addEventListener('click', async (event) => {
-  const btn = event.target.closest('.category-members-save-btn');
-  if (!btn) return;
-  const block = btn.closest('.category-assign-block');
-  const select = block.querySelector('.category-select');
-  const category = select.value;
-  const userIds = [...block.querySelectorAll('.user-check:checked')].map((cb) => cb.value);
-  const url = block.dataset.saveUrlTemplate.replace('__CATEGORY__', encodeURIComponent(category));
+  if (!event.target.closest('#admin-user-categories-save-btn')) return;
+  const pickers = [...document.querySelectorAll('.user-categories-picker[data-user-id]')];
   try {
-    const body = new URLSearchParams();
-    userIds.forEach((id) => body.append('user_id', id));
-    const response = await fetch(url, {method: 'POST', headers: {'Accept': 'application/json'}, body});
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.message);
-    const dataEl = block.querySelector('.category-members-data');
-    const memberData = JSON.parse(dataEl.textContent || '{}');
-    memberData[category] = userIds;
-    dataEl.textContent = JSON.stringify(memberData);
-    block.querySelectorAll('.user-cat-badge').forEach((badge) => {
-      const userId = badge.dataset.userId;
-      const cats = Object.keys(memberData).filter((cat) => (memberData[cat] || []).map(String).includes(userId));
-      badge.textContent = cats.join(', ');
-    });
-    alert(result.message);
+    await Promise.all(pickers.map(async (picker) => {
+      const userId = picker.dataset.userId;
+      const selected = [...picker.querySelectorAll('.form-check-input:checked')].map((cb) => cb.value);
+      const body = new URLSearchParams();
+      selected.forEach((cat) => body.append('categories', cat));
+      const response = await fetch(`/admin/users/${userId}/categories`, {method: 'POST', headers: {'Accept': 'application/json'}, body});
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message);
+      const button = picker.querySelector('.category-select-button');
+      button.textContent = result.categories.length ? `선택: ${result.categories.join(', ')}` : '담당 지정';
+      button.classList.toggle('has-selection', result.categories.length > 0);
+    }));
+    alert('담당 품목을 저장했습니다.');
   } catch (error) {
-    alert(error.message || '담당자 저장에 실패했습니다.');
+    alert(error.message || '담당 품목 저장에 실패했습니다.');
   }
 });
+document.addEventListener('show.bs.dropdown', (event) => {
+  const wrapper = event.target.closest('.user-categories-picker, .create-user-categories-dropdown');
+  if (!wrapper) return;
+  const button = wrapper.querySelector('.category-select-button');
+  const menu = wrapper.querySelector('.dropdown-menu');
+  if (!button || !menu) return;
+  const rect = button.getBoundingClientRect();
+  menu.style.position = 'fixed';
+  menu.style.top = `${rect.bottom + 4}px`;
+  menu.style.left = `${rect.left}px`;
+  menu.style.right = 'auto';
+  menu.style.margin = '0';
+  menu.style.minWidth = `${Math.max(rect.width, 280)}px`;
+});
+document.addEventListener('change', async (event) => {
+  const select = event.target.closest('.admin-role-select');
+  if (!select) return;
+  const previous = select.dataset.previousValue || (select.value === 'admin' ? 'user' : 'admin');
+  try {
+    const body = new URLSearchParams(); body.append('role', select.value);
+    const response = await fetch(`/admin/users/${select.dataset.userId}/role`, {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json'}, body});
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message);
+    select.dataset.previousValue = select.value;
+    alert(result.message);
+  } catch (error) {
+    select.value = previous;
+    alert(error.message || '권한 변경에 실패했습니다.');
+  }
+});
+document.addEventListener('click', async (event) => {
+  const btn = event.target.closest('#admin-user-delete-btn');
+  if (!btn) return;
+  const rows = [...document.querySelectorAll('.user-row-check:checked')];
+  if (!rows.length) { alert('삭제할 사용자를 선택하세요.'); return; }
+  if (!confirm(`선택한 ${rows.length}명의 사용자를 삭제하시겠습니까?`)) return;
+  try {
+    const body = new URLSearchParams(); rows.forEach((cb) => body.append('user_id', cb.value));
+    const response = await fetch('{{ url_for('admin.delete_users') }}', {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json'}, body});
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message);
+    rows.forEach((cb) => cb.closest('tr').remove());
+    alert(result.message);
+  } catch (error) {
+    alert(error.message || '사용자 삭제에 실패했습니다.');
+  }
+});
+document.addEventListener('input', (event) => {
+  const field = event.target.closest('.admin-user-search');
+  if (!field) return;
+  const keyword = field.value.trim().toLowerCase();
+  document.querySelectorAll('#admin-user-table tbody tr').forEach((row) => {
+    row.style.display = row.dataset.username.includes(keyword) ? '' : 'none';
+  });
+});
 </script>
+{% endblock %}

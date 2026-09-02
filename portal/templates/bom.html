@@ -45,6 +45,19 @@ document.addEventListener('click', async (event) => {
     } catch (error) { window.showToast?.(error.message || '확정에 실패했습니다.', true); }
     return;
   }
+  const confirmAllButton = event.target.closest('#admin-confirm-all-btn');
+  if (confirmAllButton) {
+    if (!confirm('배포된 BOM의 전체 항목을 확정하시겠습니까? 담당자 입력값이 마스터 데이터에 반영됩니다.')) return;
+    try {
+      const data = new URLSearchParams(); data.append('all', '1');
+      const response = await fetch('{{ url_for('admin.confirm_rows') }}', {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json'}, body: data});
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message);
+      window.showToast?.(`${result.confirmed}개 항목을 확정했습니다.${result.skipped ? ` (담당자 없는 ${result.skipped}개는 건너뜀)` : ''}`);
+      htmx.trigger(document.getElementById('filter-form'), 'change');
+    } catch (error) { window.showToast?.(error.message || '확정에 실패했습니다.', true); }
+    return;
+  }
   const resetButton = event.target.closest('#reset-my-work-btn');
   if (resetButton) {
     if (!confirm('담당 품목과 지금까지 저장한 재료단가를 모두 삭제합니다. 계속하시겠습니까?')) return;
