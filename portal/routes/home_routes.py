@@ -1,5 +1,9 @@
-from flask import Blueprint, render_template, request, redirect, url_for, current_app, flash
+import io
+
+from flask import Blueprint, render_template, request, redirect, url_for, current_app, flash, send_file
 from flask_login import login_required, current_user
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font
 import db
 import fx
 import parser
@@ -38,6 +42,7 @@ def index():
             "total": sum(category["total_sum"] for category in categories),
         })
     latest_bom_upload = db.get_latest_bom_upload(conn)
+    report = db.dashboard_report(conn, active_bom_id, selected_vehicle)
     conn.close()
     domestic_rows = [row for row in vehicle_summary if row["country"] == "한국"]
     overseas_rows = [row for row in vehicle_summary if row["country"] != "한국"]
@@ -64,7 +69,105 @@ def index():
         vehicles=vehicles,
         selected_vehicle=selected_vehicle,
         active_version=active_version,
+        report=report,
     )
+
+@home_bp.route("/export/dashboard.xlsx")
+@login_required
+def export_dashboard():
+    conn = db.get_connection(current_app.config["DB_PATH"])
+    vehicles = db.list_vehicles(conn)
+    selected_vehicle = request.args.get("vehicle", "NE2_NV1")
+    if selected_vehicle not in vehicles:
+        selected_vehicle = vehicles[0] if vehicles else ""
+    active_version = db.get_active_bom_version(conn)
+    active_bom_id = active_version["id"] if active_version else None
+    report = db.dashboard_report(conn, active_bom_id, selected_vehicle)
+    conn.close()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "재료비 Summary"
+    overseas = report["overseas_countries"]
+    bold_center = Alignment(horizontal="center", vertical="center")
+
+    title = f"▶ {selected_vehicle} 재료비 (국내" + "".join(f"/{c}" for c in overseas) + ")"
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=6 + len(overseas) * 6)
+    ws.cell(row=1, column=1, value=title).font = Font(bold=True)
+
+    header_row, sub_row = 3, 4
+    ws.merge_cells(start_row=header_row, start_column=1, end_row=sub_row, end_column=1)
+    ws.cell(row=header_row, column=1, value="대분류").alignment = bold_center
+    ws.merge_cells(start_row=header_row, start_column=2, end_row=sub_row, end_column=2)
+    ws.cell(row=header_row, column=2, value="구분").alignment = bold_center
+
+    col = 3
+    ws.merge_cells(start_row=header_row, start_column=col, end_row=header_row, end_column=col + 3)
+    ws.cell(row=header_row, column=col, value="내수").alignment = bold_center
+    for label in ("재료비", "물류비", "관세", "합계"):
+        ws.cell(row=sub_row, column=col, value=label).alignment = bold_center
+        col += 1
+
+    country_start_cols = {}
+    for country in overseas:
+        country_start_cols[country] = col
+        ws.merge_cells(start_row=header_row, start_column=col, end_row=header_row, end_column=col + 5)
+        ws.cell(row=header_row, column=col, value=country).alignment = bold_center
+        ws.merge_cells(start_row=sub_row, start_column=col, end_row=sub_row, end_column=col + 2)
+        ws.cell(row=sub_row, column=col, value="재료비(LP/KD)").alignment = bold_center
+        ws.cell(row=sub_row + 1, column=col, value="LP").alignment = bold_center
+        ws.cell(row=sub_row + 1, column=col + 1, value="KD").alignment = bold_center
+        ws.cell(row=sub_row + 1, column=col + 2, value="합계").alignment = bold_center
+        for offset, label in enumerate(("물류비", "관세", "합계"), start=3):
+            ws.cell(row=sub_row, column=col + offset, value=label).alignment = bold_center
+        col += 6
+
+    row = sub_row + 2
+    for major in report["majors"]:
+        first_row = row
+        for cat in major["categories"]:
+            ws.cell(row=row, column=2, value=cat["category"])
+            d = cat["domestic"]
+            ws.cell(row=row, column=3, value=d["material"])
+            ws.cell(row=row, column=4, value=d["logistics"])
+            ws.cell(row=row, column=5, value=d["tariff"])
+            ws.cell(row=row, column=6, value=d["total"])
+            for country in overseas:
+                o = cat["overseas"][country]
+                base = country_start_cols[country]
+                ws.cell(row=row, column=base, value=o["material_lp"])
+                ws.cell(row=row, column=base + 1, value=o["material_kd"])
+                ws.cell(row=row, column=base + 2, value=o["material_total"])
+                ws.cell(row=row, column=base + 3, value=o["logistics"])
+                ws.cell(row=row, column=base + 4, value=o["tariff"])
+                ws.cell(row=row, column=base + 5, value=o["total"])
+            row += 1
+        if row - 1 > first_row:
+            ws.merge_cells(start_row=first_row, start_column=1, end_row=row - 1, end_column=1)
+        ws.cell(row=first_row, column=1, value=major["major"]).alignment = bold_center
+
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=2)
+    ws.cell(row=row, column=1, value="합 계").alignment = bold_center
+    gd = report["grand_domestic"]
+    ws.cell(row=row, column=3, value=gd["material"])
+    ws.cell(row=row, column=4, value=gd["logistics"])
+    ws.cell(row=row, column=5, value=gd["tariff"])
+    ws.cell(row=row, column=6, value=gd["total"])
+    for country in overseas:
+        go = report["grand_overseas"][country]
+        base = country_start_cols[country]
+        ws.cell(row=row, column=base, value=go["material_lp"])
+        ws.cell(row=row, column=base + 1, value=go["material_kd"])
+        ws.cell(row=row, column=base + 2, value=go["material_total"])
+        ws.cell(row=row, column=base + 3, value=go["logistics"])
+        ws.cell(row=row, column=base + 4, value=go["tariff"])
+        ws.cell(row=row, column=base + 5, value=go["total"])
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    filename = f"재료비_Summary_{selected_vehicle}.xlsx"
+    return send_file(buffer, as_attachment=True, download_name=filename, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 @home_bp.route("/upload", methods=["POST"])
 @login_required

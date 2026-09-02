@@ -25,11 +25,32 @@
     </div>
 </div>
 
-{% for cat in categories %}
+{% macro cost_line(node) %}&#51116;&#47308;&#48708; {{ "{:,.0f}".format(node.material_sum) }} · &#47932;&#47448;&#48708; {{ "{:,.0f}".format(node.logistics_sum) }} · &#52509;&#48708;&#50857; {{ "{:,.0f}".format(node.total_sum) }}{% endmacro %}
+
+{% for major in majors %}
 <div class="portal-card tree-card">
-    <details class="tree-details tree-category" open>
-        <summary><span class="tree-label">{{ cat.name }}</span><span class="tree-cost">&#52509; &#51116;&#47308;&#48708; {{ "{:,.0f}".format(cat.material_sum) }} · &#52509;&#48708;&#50857; {{ "{:,.0f}".format(cat.total_sum) }}</span></summary>
-        <ul class="tree-children">{% for child in cat.children %}{{ render_node(child) }}{% endfor %}</ul>
+    <details class="tree-details tree-major" open>
+        <summary><span class="tree-label">{{ major.name }}</span><span class="tree-cost">{{ cost_line(major) }}</span></summary>
+        {% for group in major.groups %}
+        {% if group.is_wrapper %}
+        <details class="tree-details tree-group" open>
+            <summary><span class="tree-label">{{ group.name }}</span><span class="tree-cost">{{ cost_line(group) }}</span></summary>
+            {% for cat in group.categories %}
+            <details class="tree-details tree-category" open>
+                <summary><span class="tree-label">{{ cat.name }}</span><span class="tree-cost">{{ cost_line(cat) }}</span></summary>
+                <ul class="tree-children">{% for child in cat.children %}{{ render_node(child) }}{% endfor %}</ul>
+            </details>
+            {% endfor %}
+        </details>
+        {% else %}
+        {% for cat in group.categories %}
+        <details class="tree-details tree-category" open>
+            <summary><span class="tree-label">{{ cat.name }}</span><span class="tree-cost">{{ cost_line(cat) }}</span></summary>
+            <ul class="tree-children">{% for child in cat.children %}{{ render_node(child) }}{% endfor %}</ul>
+        </details>
+        {% endfor %}
+        {% endif %}
+        {% endfor %}
     </details>
 </div>
 {% else %}

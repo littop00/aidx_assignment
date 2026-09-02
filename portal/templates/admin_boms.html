@@ -7,6 +7,7 @@
 <ul class="nav nav-tabs portal-tabs" role="tablist">
   <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#admin-tab-bom" type="button"><i class="bi bi-layers"></i> BOM 관리</button></li>
   <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#admin-tab-users" type="button"><i class="bi bi-people"></i> 사용자 관리</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#admin-tab-logistics" type="button"><i class="bi bi-truck"></i> 물류 마스터</button></li>
 </ul>
 <div class="tab-content portal-tab-content">
 <div class="tab-pane fade show active" id="admin-tab-bom">
@@ -25,7 +26,7 @@
   <h3 class="card-title"><i class="bi bi-layers"></i> BOM 버전</h3>
   <div class="table-responsive admin-version-table"><table class="table bom-table"><thead><tr><th>버전</th><th>이름</th><th>차종</th><th>상태</th><th>파일</th><th>생성</th><th>작업</th></tr></thead><tbody>
   {% for version in versions %}
-  <tr><td>Rev.{{ version.version_no }}</td><td>{{ version.name }}</td><td>{{ version.vehicle or '-' }}</td><td>{% if version.is_withdrawn %}<span class="badge text-bg-danger">배포 취소</span>{% else %}<span class="badge {% if version.status == 'published' %}status-done{% elif version.status == 'draft' %}status-missing{% else %}text-bg-secondary{% endif %}">{{ {'draft':'초안','published':'배포 중','archived':'보관'}[version.status] }}</span>{% endif %}</td><td>{{ version.file_name or '-' }}</td><td>{{ version.created_at.replace('T',' ') }}</td><td class="admin-actions">{% if version.status == 'draft' %}<div class="admin-action-stack"><form class="admin-upload-form" method="post" action="{{ url_for('admin.upload_draft', bom_id=version.id) }}" enctype="multipart/form-data"><input type="file" name="bom_file" accept=".xlsx" required><button class="btn btn-sm btn-outline-primary">BOM 업로드</button></form><form class="admin-country-form" method="post" action="{{ url_for('admin.set_countries', bom_id=version.id) }}"><details><summary>국가 설정 ({{ version_countries[version.id]|join(', ') }})</summary><div>{% for country in countries %}<label><input type="checkbox" name="country" value="{{ country }}" {% if country in version_countries[version.id] %}checked{% endif %}> {{ country }}</label>{% endfor %}</div><button class="btn btn-sm btn-outline-secondary">국가 저장</button></details></form><form method="post" action="{{ url_for('admin.publish_draft', bom_id=version.id) }}" onsubmit="return confirm('이 리비전을 사용자에게 배포하시겠습니까? 기존 배포본은 보관 처리됩니다.')"><button class="btn btn-sm btn-primary">검증 후 배포</button></form><form method="post" action="{{ url_for('admin.delete_draft', bom_id=version.id) }}" onsubmit="return confirm('이 초안을 삭제하시겠습니까? 업로드한 BOM 행과 국가 설정이 모두 삭제되며 되돌릴 수 없습니다.')"><button class="btn btn-sm btn-outline-danger">초안 삭제</button></form></div>{% elif version.status == 'published' and not version.is_withdrawn %}<form method="post" action="{{ url_for('admin.withdraw_bom', bom_id=version.id) }}" onsubmit="return confirm('이 BOM의 배포를 취소하시겠습니까? 사용자의 입력과 제출이 즉시 중단됩니다.')"><input class="form-control form-control-sm mb-1" name="reason" placeholder="취소 사유 (사용자에게 안내)"><button class="btn btn-sm btn-outline-danger">배포 취소</button></form>{% else %}<span class="text-muted small">읽기 전용</span>{% endif %}</td></tr>
+  <tr><td>Rev.{{ version.version_no }}</td><td>{{ version.name }}</td><td>{{ version.vehicle or '-' }}</td><td>{% if version.is_withdrawn %}<span class="badge text-bg-danger">배포 취소</span>{% else %}<span class="badge {% if version.status == 'published' %}status-done{% elif version.status == 'draft' %}status-missing{% else %}text-bg-secondary{% endif %}">{{ {'draft':'초안','published':'배포 중','archived':'보관'}[version.status] }}</span>{% endif %}{% if version.is_confirmed %} <span class="badge text-bg-success">확정됨</span>{% endif %}{% if version.due_date %}<br><span class="text-muted small">마감 {{ version.due_date.replace('T',' ') }}</span>{% endif %}</td><td>{{ version.file_name or '-' }}</td><td>{{ version.created_at.replace('T',' ') }}</td><td class="admin-actions">{% if version.status == 'draft' %}<div class="admin-action-stack"><form class="admin-upload-form" method="post" action="{{ url_for('admin.upload_draft', bom_id=version.id) }}" enctype="multipart/form-data"><input type="file" name="bom_file" accept=".xlsx" required><button class="btn btn-sm btn-outline-primary">BOM 업로드</button></form><form class="admin-country-form" method="post" action="{{ url_for('admin.set_countries', bom_id=version.id) }}"><details><summary>국가 설정 ({{ version_countries[version.id]|join(', ') }})</summary><input type="text" class="form-control form-control-sm country-search" placeholder="국가 검색"><div class="country-checkbox-list">{% for country in countries %}<label class="country-option"><input type="checkbox" name="country" value="{{ country }}" {% if country in version_countries[version.id] %}checked{% endif %}> {{ country }}</label>{% endfor %}</div><button class="btn btn-sm btn-outline-secondary">국가 저장</button></details></form>{% include 'partials/_logistics_settings.html' %}<form method="post" action="{{ url_for('admin.publish_draft', bom_id=version.id) }}" onsubmit="return confirm('이 리비전을 사용자에게 배포하시겠습니까? 기존 배포본은 보관 처리됩니다.')"><button class="btn btn-sm btn-primary">검증 후 배포</button></form><form method="post" action="{{ url_for('admin.delete_draft', bom_id=version.id) }}" onsubmit="return confirm('이 초안을 삭제하시겠습니까? 업로드한 BOM 행과 국가 설정이 모두 삭제되며 되돌릴 수 없습니다.')"><button class="btn btn-sm btn-outline-danger">초안 삭제</button></form></div>{% elif version.status == 'published' and not version.is_withdrawn %}<div class="admin-action-stack"><form method="post" action="{{ url_for('admin.set_due_date', bom_id=version.id) }}" class="d-flex align-items-center gap-1"><label class="form-label small mb-0">마감기한</label><input type="datetime-local" name="due_date" class="form-control form-control-sm" value="{{ version.due_date[:16] if version.due_date else '' }}"><button class="btn btn-sm btn-outline-secondary">저장</button></form><form method="post" action="{{ url_for('admin.withdraw_bom', bom_id=version.id) }}" onsubmit="return confirm('이 BOM의 배포를 취소하시겠습니까? 사용자의 입력과 제출이 즉시 중단됩니다.')"><input class="form-control form-control-sm mb-1" name="reason" placeholder="취소 사유 (사용자에게 안내)"><button class="btn btn-sm btn-outline-danger">배포 취소</button></form></div>{% else %}<span class="text-muted small">읽기 전용</span>{% endif %}</td></tr>
   {% endfor %}
   </tbody></table></div>
 </div>
@@ -35,10 +36,120 @@
 
 <div class="admin-grid">
 {% for version in versions if version.status == 'draft' %}<datalist id="bom-parts-{{ version.id }}">{% for part in draft_parts[version.id] %}<option value="{{ part.part_no }}">{{ part.row_num }} · {{ part.part_name }}</option>{% endfor %}</datalist>{% endfor %}
-<div class="portal-card"><h3 class="card-title"><i class="bi bi-people"></i> 사용자</h3><form method="post" action="{{ url_for('admin.create_user') }}" class="admin-user-form"><input name="username" class="form-control" placeholder="사용자명" required><input name="password" type="password" class="form-control" placeholder="초기 비밀번호" required><select name="role" class="form-select"><option value="user">사용자</option><option value="admin">관리자</option></select><button class="btn btn-primary">사용자 생성</button></form><ul class="admin-list">{% for user in users %}<li>{{ user.username }} <span>{{ '관리자' if user.role == 'admin' else '사용자' }}</span></li>{% endfor %}</ul></div>
+<div class="portal-card"><h3 class="card-title"><i class="bi bi-people"></i> 사용자</h3><form id="create-user-form" method="post" action="{{ url_for('admin.create_user') }}" class="admin-user-form"><input name="username" class="form-control" placeholder="사용자명" required><input name="password" type="password" class="form-control" placeholder="초기 비밀번호" required><select name="role" class="form-select"><option value="user">사용자</option><option value="admin">관리자</option></select>{% if active and categories_by_version.get(active.id) %}<div class="create-user-categories">{% for category in categories_by_version[active.id] %}<label class="form-check form-check-inline"><input class="form-check-input" type="checkbox" name="categories" value="{{ category }}"> {{ category }}</label>{% endfor %}</div>{% endif %}<button class="btn btn-primary">사용자 생성</button></form><ul class="admin-list" id="admin-user-list">{% for user in users %}<li data-user-id="{{ user.id }}">{{ user.username }} <span>{{ '관리자' if user.role == 'admin' else '사용자' }}</span>{% if user_categories.get(user.id) %} <span class="badge text-bg-primary user-cat-badge">{{ user_categories[user.id]|join(', ') }}</span>{% endif %}</li>{% endfor %}</ul></div>
+<div class="portal-card"><h3 class="card-title"><i class="bi bi-diagram-3"></i> 담당 구분 배정</h3>{% for version in versions if version.status in ('draft', 'published') and not version.is_withdrawn %}<p class="fw-bold small mb-1">Rev.{{ version.version_no }} {{ version.name }}</p>{% include 'partials/_category_members.html' %}{% endfor %}</div>
+</div>
+
+</div>
+<div class="tab-pane fade" id="admin-tab-logistics">
+
+<div class="portal-card">
+  <h3 class="card-title"><i class="bi bi-truck"></i> 국가별 컨테이너 운송비 (최신값)</h3>
+  <div class="table-responsive"><table class="table bom-table"><thead><tr><th>국가</th><th>컨테이너 운송비</th><th>기준일</th><th>작업</th></tr></thead><tbody>
+  {% for rate in logistics_rates %}<tr><td>{{ rate.country }}</td><td>{{ rate.container_freight }}</td><td>{{ rate.effective_date }}</td><td class="d-flex gap-1"><button type="button" class="btn btn-sm btn-outline-secondary logistics-rate-edit-btn" data-country="{{ rate.country }}" data-date="{{ rate.effective_date }}" data-freight="{{ rate.container_freight }}">수정</button><form method="post" action="{{ url_for('admin.delete_logistics_rate', country=rate.country, effective_date=rate.effective_date) }}" onsubmit="return confirm('이 운임을 삭제하시겠습니까?')"><button class="btn btn-sm btn-outline-danger">삭제</button></form></td></tr>
+  {% else %}<tr><td colspan="4" class="text-center text-muted py-4">등록된 운임이 없습니다.</td></tr>{% endfor %}
+  </tbody></table></div>
+</div>
+
+<div class="portal-card">
+  <h3 class="card-title"><i class="bi bi-plus-circle"></i> 운임 등록/갱신</h3>
+  <form method="post" action="{{ url_for('admin.set_logistics_rate') }}" class="admin-logistics-rate-form">
+    <div class="row g-1 mb-1">
+      <div class="col"><label class="form-label small mb-0">국가</label><select name="country" class="form-select form-select-sm" required><option value="">선택</option>{% for country in countries if country != '한국' %}<option value="{{ country }}">{{ country }}</option>{% endfor %}</select></div>
+      <div class="col"><label class="form-label small mb-0">기준일</label><input type="date" name="effective_date" class="form-control form-control-sm" required></div>
+      <div class="col"><label class="form-label small mb-0">컨테이너 운송비</label><input type="number" step="any" name="container_freight" class="form-control form-control-sm"></div>
+    </div>
+    <button class="btn btn-sm btn-primary">운임 저장</button>
+  </form>
 </div>
 
 </div>
 </div>
 {% endblock %}
 <script>document.querySelectorAll('form[action*="/rows"] input[name="anchor_part_no"]').forEach(input=>{const form=input.closest('form'), label=form.querySelector('strong'); if(label){const m=label.textContent.match(/Rev\.(\d+)/); const select=[...document.querySelectorAll('datalist')].find(x=>x.id.endsWith(m&&m[1]||'')); if(select) input.setAttribute('list',select.id);}});</script>
+<script>
+document.addEventListener('click', (event) => {
+  const btn = event.target.closest('.logistics-rate-edit-btn');
+  if (!btn) return;
+  const form = document.querySelector('.admin-logistics-rate-form');
+  if (!form) return;
+  form.querySelector('[name="country"]').value = btn.dataset.country;
+  form.querySelector('[name="effective_date"]').value = btn.dataset.date;
+  form.querySelector('[name="container_freight"]').value = btn.dataset.freight;
+  form.scrollIntoView({behavior: 'smooth', block: 'center'});
+});
+</script>
+<script>
+document.addEventListener('submit', async (event) => {
+  const form = event.target.closest('#create-user-form');
+  if (!form) return;
+  event.preventDefault();
+  try {
+    const response = await fetch(form.action, {method: 'POST', headers: {'Accept': 'application/json'}, body: new FormData(form)});
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message);
+    const list = document.getElementById('admin-user-list');
+    const li = document.createElement('li');
+    li.dataset.userId = result.user.id;
+    li.appendChild(document.createTextNode(result.user.username + ' '));
+    const roleSpan = document.createElement('span');
+    roleSpan.textContent = result.user.role === 'admin' ? '관리자' : '사용자';
+    li.appendChild(roleSpan);
+    if (result.user.categories.length) {
+      const catSpan = document.createElement('span');
+      catSpan.className = 'badge text-bg-primary user-cat-badge';
+      catSpan.textContent = ' ' + result.user.categories.join(', ');
+      li.appendChild(catSpan);
+    }
+    list.appendChild(li);
+    form.reset();
+    alert(result.message);
+  } catch (error) {
+    alert(error.message || '사용자 생성에 실패했습니다.');
+  }
+});
+</script>
+<script>
+function initCategoryBlock(block) {
+  const dataEl = block.querySelector('.category-members-data');
+  const select = block.querySelector('.category-select');
+  if (!dataEl || !select) return;
+  const applyCategory = (category) => {
+    const memberData = JSON.parse(dataEl.textContent || '{}');
+    const ids = (memberData[category] || []).map(String);
+    block.querySelectorAll('.user-check').forEach((box) => { box.checked = ids.includes(box.value); });
+  };
+  applyCategory(select.value);
+  select.addEventListener('change', () => applyCategory(select.value));
+}
+document.querySelectorAll('.category-assign-block').forEach(initCategoryBlock);
+
+document.addEventListener('click', async (event) => {
+  const btn = event.target.closest('.category-members-save-btn');
+  if (!btn) return;
+  const block = btn.closest('.category-assign-block');
+  const select = block.querySelector('.category-select');
+  const category = select.value;
+  const userIds = [...block.querySelectorAll('.user-check:checked')].map((cb) => cb.value);
+  const url = block.dataset.saveUrlTemplate.replace('__CATEGORY__', encodeURIComponent(category));
+  try {
+    const body = new URLSearchParams();
+    userIds.forEach((id) => body.append('user_id', id));
+    const response = await fetch(url, {method: 'POST', headers: {'Accept': 'application/json'}, body});
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message);
+    const dataEl = block.querySelector('.category-members-data');
+    const memberData = JSON.parse(dataEl.textContent || '{}');
+    memberData[category] = userIds;
+    dataEl.textContent = JSON.stringify(memberData);
+    block.querySelectorAll('.user-cat-badge').forEach((badge) => {
+      const userId = badge.dataset.userId;
+      const cats = Object.keys(memberData).filter((cat) => (memberData[cat] || []).map(String).includes(userId));
+      badge.textContent = cats.join(', ');
+    });
+    alert(result.message);
+  } catch (error) {
+    alert(error.message || '담당자 저장에 실패했습니다.');
+  }
+});
+</script>

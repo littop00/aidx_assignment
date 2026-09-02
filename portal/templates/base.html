@@ -206,11 +206,51 @@
     window.saveBomRow = saveRow;
     window.showToast = showSaveMessage;
 
+    function applyKdLocationLock(select) {
+        if (select.disabled) return;
+        const prefix = select.name.split("__")[0];
+        const location = select.closest("tr")?.querySelector(`[name="${prefix}__sourcing_part_location"]`);
+        if (!location) return;
+        if (select.value === "KD") { location.value = ""; location.disabled = true; }
+        else { location.disabled = false; }
+    }
+    function applyKdMaterialDefault(select) {
+        if (select.disabled || select.value !== "KD") return;
+        const prefix = select.name.split("__")[0];
+        if (prefix === "한국") return;
+        const row = select.closest("tr");
+        const material = row?.querySelector(`[name="${prefix}__unit_price_material"]`);
+        const domesticMaterial = row?.querySelector(`[name="한국__unit_price_material"]`);
+        if (!material || !domesticMaterial || material.disabled || material.value !== "") return;
+        material.value = domesticMaterial.value;
+        material.dispatchEvent(new Event("input", {bubbles: true}));
+    }
+    document.querySelectorAll('#grid-container select[name$="__sourcing_part"]').forEach((select) => { applyKdLocationLock(select); applyKdMaterialDefault(select); });
+    document.body.addEventListener("htmx:afterSwap", (event) => {
+        event.target.querySelectorAll('select[name$="__sourcing_part"]').forEach((select) => { applyKdLocationLock(select); applyKdMaterialDefault(select); });
+    });
+
+    document.addEventListener("input", (event) => {
+        if (event.target.matches(".country-search")) {
+            const keyword = event.target.value.trim().toLowerCase();
+            event.target.nextElementSibling?.querySelectorAll(".country-option").forEach((label) => {
+                label.style.display = label.textContent.toLowerCase().includes(keyword) ? "" : "none";
+            });
+        }
+        if (event.target.matches(".user-search")) {
+            const keyword = event.target.value.trim().toLowerCase();
+            event.target.closest(".category-assign-block")?.querySelectorAll(".user-check-row").forEach((label) => {
+                label.style.display = label.dataset.username.includes(keyword) ? "" : "none";
+            });
+        }
+    });
+
     document.addEventListener("change", (event) => {
         if (event.target.id === "select-all") {
             document.querySelectorAll("#grid-container .row-select:not(:disabled)").forEach((box) => { box.checked = event.target.checked; });
             return;
         }
+        if (event.target.matches('select[name$="__sourcing_part"]')) { applyKdLocationLock(event.target); applyKdMaterialDefault(event.target); }
         const field = event.target.closest(".row-autosave");
         if (field) { field.closest("tr[data-save-url]").dataset.dirty = "true"; field.classList.add("cell-dirty"); field.classList.remove("cell-error"); }
     });
@@ -220,7 +260,7 @@
         const bulkSave = event.target.closest("#bulk-save-btn");
         if (bulkApply || bulkSave) {
             event.preventDefault();
-            const rows = [...document.querySelectorAll("#grid-container tr[data-save-url]")].filter((row) => row.querySelector(".row-select, .assignment-toggle")?.checked);
+            const rows = [...document.querySelectorAll("#grid-container tr[data-save-url]")].filter((row) => row.querySelector(".row-select")?.checked);
             if (!rows.length) { showSaveMessage("적용할 행을 먼저 선택해 주세요.", true); return; }
             if (bulkApply) {
                 const country = document.getElementById("bulk-country")?.value;
@@ -230,7 +270,7 @@
                 let appliedRows = 0;
                 rows.forEach((row) => {
                     const selector = country === "all" ? `[name$="__${field}"]` : `[name="${country}__${field}"]`;
-                    const inputs = [...row.querySelectorAll(selector)].filter((input) => !input.disabled);
+                    const inputs = [...row.querySelectorAll(selector)].filter((input) => !input.disabled && !(country === "all" && input.name.startsWith("한국__")));
                     if (!inputs.length) return;
                     inputs.forEach((input) => {
                         input.value = value;

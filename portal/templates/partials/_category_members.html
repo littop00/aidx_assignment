@@ -1,0 +1,23 @@
+{% if categories_by_version[version.id] %}
+<div class="category-assign-block mb-2 p-2 border rounded" data-save-url-template="{{ url_for('admin.set_category_members', bom_id=version.id, category='__CATEGORY__') }}">
+  <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+    <select class="form-select form-select-sm category-select" style="max-width:220px">
+      {% for category in categories_by_version[version.id] %}<option value="{{ category }}">{{ category }}</option>{% endfor %}
+    </select>
+    <input type="text" class="form-control form-control-sm user-search" placeholder="사용자 검색" style="max-width:200px">
+    <button type="button" class="btn btn-sm btn-outline-primary category-members-save-btn">저장</button>
+  </div>
+  <div class="user-check-list">
+    {% for user in users if user.role != 'admin' %}
+    <label class="form-check user-check-row d-block mb-1" data-username="{{ user.username|lower }}">
+      <input class="form-check-input user-check" type="checkbox" value="{{ user.id }}">
+      {{ user.username }}
+      <span class="badge text-bg-primary user-cat-badge ms-1" data-user-id="{{ user.id }}">{{ user_categories_by_version[version.id].get(user.id, [])|join(', ') }}</span>
+    </label>
+    {% else %}<span class="text-muted small">등록된 사용자가 없습니다.</span>
+    {% endfor %}
+  </div>
+  <script type="application/json" class="category-members-data">{{ member_ids_by_category.get(version.id, {})|tojson }}</script>
+</div>
+{% else %}<span class="text-muted small">BOM 업로드 후 구분(카테고리)이 표시됩니다.</span>
+{% endif %}
