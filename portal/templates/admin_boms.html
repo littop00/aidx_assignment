@@ -1,68 +1,167 @@
-{% extends "base.html" %}
-{% block title %}BOM 관리자 - 재료비 관리 포탈{% endblock %}
+{% extends "base_new.html" %}
+{% block title %}BOM 관리자 - TMS Portal{% endblock %}
+{% block page_title %}BOM 관리자{% endblock %}
 {% block content %}
-<h2 class="page-title">BOM 관리자</h2>
-<div class="portal-card admin-intro"><strong>관리자 작업 흐름</strong><span>1. 초안 생성 · 2. BOM 업로드 · 국가 설정 · 3. 확정 · 4. 사용자 입력·검토</span></div>
+<div x-data='{tab: "bom", draftOpen: false, copy: false, activeName: {{ (active.name if active else "")|tojson }}, activeVehicle: {{ (active.vehicle if active else "")|tojson }}}'>
+<div class="bg-white rounded-2xl p-6 shadow-sm border-none mb-6 admin-intro"><strong class="text-[#1B2559]">관리자 작업 흐름</strong><span class="text-[#A3AED0] ml-2"><span :class="draftOpen ? 'text-primary font-bold' : ''">1. 초안 생성</span> · 2. BOM 업로드 · 국가 설정 · 3. 확정 · 4. 사용자 입력·검토</span></div>
 
-<ul class="nav nav-tabs portal-tabs" role="tablist">
-  <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#admin-tab-bom" type="button"><i class="bi bi-layers"></i> BOM 관리</button></li>
-  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#admin-tab-users" type="button"><i class="bi bi-people"></i> 사용자 관리</button></li>
-  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#admin-tab-logistics" type="button"><i class="bi bi-truck"></i> 물류 마스터</button></li>
-</ul>
-<div class="tab-content portal-tab-content">
-<div class="tab-pane fade show active" id="admin-tab-bom">
+<div class="flex gap-2 mb-6"><button type="button" class="btn btn-sm rounded-xl font-semibold flex items-center gap-2" :class="tab === 'bom' ? 'btn-primary shadow-md shadow-blue-100' : 'btn-ghost text-[#A3AED0]'" @click="tab = 'bom'"><i class="bi bi-layers"></i> BOM 관리</button><button type="button" class="btn btn-sm rounded-xl font-semibold flex items-center gap-2" :class="tab === 'users' ? 'btn-primary shadow-md shadow-blue-100' : 'btn-ghost text-[#A3AED0]'" @click="tab = 'users'"><i class="bi bi-people"></i> 사용자 관리</button><button type="button" class="btn btn-sm rounded-xl font-semibold flex items-center gap-2" :class="tab === 'logistics' ? 'btn-primary shadow-md shadow-blue-100' : 'btn-ghost text-[#A3AED0]'" @click="tab = 'logistics'"><i class="bi bi-truck"></i> 물류 마스터</button></div>
+<div x-show="tab === 'bom'">
 
-<div class="portal-card">
-  <h3 class="card-title"><i class="bi bi-plus-circle"></i> 새 BOM 초안</h3>
-  <form method="post" action="{{ url_for('admin.create_draft') }}" class="admin-draft-form">
-    <input name="name" class="form-control" placeholder="예: NE2_NV1 BOM v2" required>
-    <input name="vehicle" class="form-control" placeholder="차종">
-    <label class="form-check"><input class="form-check-input" type="checkbox" name="copy_costs"> 기존 입력값 이관</label>
-    <button class="btn btn-primary" type="submit">초안 생성</button>
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+
+  <div class="lg:col-span-1 flex flex-col gap-6">
+    <div class="bg-white rounded-2xl p-6 shadow-sm border-none">
+      <h3 class="text-lg font-bold text-[#1B2559] mb-4 flex items-center gap-2"><i class="bi bi-layers"></i> BOM 버전</h3>
+      <table class="table table-sm table-zebra bom-table w-full text-[#1B2559] text-sm"><thead><tr class="bg-transparent border-b border-base-content/10"><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-left">버전</th><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-left">이름</th><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-left">차종</th><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-center">상태</th></tr></thead><tbody>
+      {% for version in versions %}
+      <tr><td class="text-left text-sm font-medium">Rev.{{ version.version_no }}</td><td class="text-left text-sm font-medium">{{ version.name }}</td><td class="text-left text-sm font-medium">{{ version.vehicle or '-' }}</td><td class="text-center align-middle"><div class="flex flex-col items-center gap-1"><div class="flex items-center justify-center gap-1 flex-wrap">{% if version.is_withdrawn %}<span class="badge badge-sm rounded-md font-bold border-none bg-rose-50 text-rose-600">배포 취소</span>{% else %}<span class="badge badge-sm rounded-md font-bold border-none {% if version.status == 'published' %}bg-emerald-50 text-emerald-600{% elif version.status == 'draft' %}bg-amber-50 text-amber-600{% else %}bg-gray-100 text-gray-500{% endif %}">{{ {'draft':'초안','published':'배포 중','archived':'보관'}[version.status] }}</span>{% if version.status == 'published' and not version.is_withdrawn %}<button type="button" class="btn btn-ghost btn-xs btn-circle" title="배포 관리" onclick="document.getElementById('withdraw-dialog-{{ version.id }}').showModal()"><i class="bi bi-gear"></i></button>{% endif %}{% endif %}{% if version.is_confirmed %}<span class="badge badge-sm rounded-md font-bold border-none bg-emerald-50 text-emerald-600">확정됨</span>{% endif %}</div>{% if version.due_date %}<span class="text-[#A3AED0] text-xs">마감 {{ version.due_date.replace('T',' ') }}</span>{% endif %}</div></td></tr>
+      {% endfor %}
+      </tbody></table>
+    </div>
+  </div>
+
+  <div class="lg:col-span-2 flex flex-col gap-6 bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-base-200">
+  <div class="flex items-center justify-between">
+    <h3 class="text-lg font-bold text-[#1B2559] flex items-center gap-2"><i class="bi bi-file-earmark-text"></i> 현재 초안</h3>
+    <button type="button" class="btn btn-primary btn-sm rounded-xl font-bold" @click="draftOpen = !draftOpen" x-text="draftOpen ? '취소' : '+ 새 BOM 생성'"></button>
+  </div>
+  <form x-show="draftOpen" x-transition x-cloak method="post" action="{{ url_for('admin.create_draft') }}" class="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-5 gap-3 items-center pb-6 border-b border-[#F4F7FE]">
+    <input name="name" x-ref="draftName" class="input input-bordered w-full rounded-xl bg-base-100 border-base-300 focus:border-primary focus:outline-none transition-all text-sm py-2 px-4" placeholder="예: NE2_NV1 BOM v2" required>
+    <input name="vehicle" x-ref="draftVehicle" class="input input-bordered w-full rounded-xl bg-base-100 border-base-300 focus:border-primary focus:outline-none transition-all text-sm py-2 px-4" placeholder="차종">
+    <label class="flex items-center gap-2 text-sm text-[#1B2559]"><input class="checkbox checkbox-sm checkbox-primary" type="checkbox" name="copy_costs" x-model="copy" @change="if(copy){ $refs.draftName.value = $refs.draftName.value || activeName; $refs.draftVehicle.value = $refs.draftVehicle.value || activeVehicle }"> 기존 입력값 이관</label>
+    <button class="btn btn-primary btn-md rounded-xl font-bold w-full" type="submit">생성</button>
+    <button type="button" class="btn btn-ghost btn-md rounded-xl w-full" @click="draftOpen = false">취소</button>
   </form>
-</div>
+  {% for version in versions if version.status == 'draft' %}
+    <div class="flex flex-wrap items-baseline gap-x-8 gap-y-2 pb-6 border-b border-[#F4F7FE]">
+      <div><span class="text-xs text-[#A3AED0] font-medium block mb-1">버전</span><span class="text-lg font-bold text-[#1B2559]">Rev.{{ version.version_no }}</span></div>
+      <div><span class="text-xs text-[#A3AED0] font-medium block mb-1">이름</span><span class="text-lg font-bold text-[#1B2559]">{{ version.name }}</span></div>
+      <div><span class="text-xs text-[#A3AED0] font-medium block mb-1">차종</span><span class="text-lg font-bold text-[#1B2559]">{{ version.vehicle or '-' }}</span></div>
+      <div><span class="text-xs text-[#A3AED0] font-medium block mb-1">상태</span><span class="badge badge-sm rounded-md font-bold border-none bg-amber-50 text-amber-600">초안</span></div>
+    </div>
 
-<div class="portal-card">
-  <h3 class="card-title"><i class="bi bi-layers"></i> BOM 버전</h3>
-  <div class="table-responsive admin-version-table"><table class="table bom-table"><thead><tr><th>버전</th><th>이름</th><th>차종</th><th>상태</th><th>파일</th><th>생성</th><th>작업</th></tr></thead><tbody>
-  {% for version in versions %}
-  <tr><td>Rev.{{ version.version_no }}</td><td>{{ version.name }}</td><td>{{ version.vehicle or '-' }}</td><td>{% if version.is_withdrawn %}<span class="badge text-bg-danger">배포 취소</span>{% else %}<span class="badge {% if version.status == 'published' %}status-done{% elif version.status == 'draft' %}status-missing{% else %}text-bg-secondary{% endif %}">{{ {'draft':'초안','published':'배포 중','archived':'보관'}[version.status] }}</span>{% endif %}{% if version.is_confirmed %} <span class="badge text-bg-success">확정됨</span>{% endif %}{% if version.due_date %}<br><span class="text-muted small">마감 {{ version.due_date.replace('T',' ') }}</span>{% endif %}</td><td>{{ version.file_name or '-' }}</td><td>{{ version.created_at.replace('T',' ') }}</td><td class="admin-actions">{% if version.status == 'draft' %}<div class="admin-action-stack"><form class="admin-upload-form" method="post" action="{{ url_for('admin.upload_draft', bom_id=version.id) }}" enctype="multipart/form-data"><input type="file" name="bom_file" accept=".xlsx" required><button class="btn btn-sm btn-outline-primary">BOM 업로드</button></form><form class="admin-country-form" method="post" action="{{ url_for('admin.set_countries', bom_id=version.id) }}"><details><summary>국가 설정 ({{ version_countries[version.id]|join(', ') }})</summary><input type="text" class="form-control form-control-sm country-search" placeholder="국가 검색"><div class="country-checkbox-list">{% for country in countries %}<label class="country-option"><input type="checkbox" name="country" value="{{ country }}" {% if country in version_countries[version.id] %}checked{% endif %}> {{ country }}</label>{% endfor %}</div><button class="btn btn-sm btn-outline-secondary">국가 저장</button></details></form>{% include 'partials/_logistics_settings.html' %}<form method="post" action="{{ url_for('admin.publish_draft', bom_id=version.id) }}" onsubmit="return confirm('이 리비전을 사용자에게 배포하시겠습니까? 기존 배포본은 보관 처리됩니다.')"><button class="btn btn-sm btn-primary">검증 후 배포</button></form><form method="post" action="{{ url_for('admin.delete_draft', bom_id=version.id) }}" onsubmit="return confirm('이 초안을 삭제하시겠습니까? 업로드한 BOM 행과 국가 설정이 모두 삭제되며 되돌릴 수 없습니다.')"><button class="btn btn-sm btn-outline-danger">초안 삭제</button></form></div>{% elif version.status == 'published' and not version.is_withdrawn %}<div class="admin-action-stack"><form method="post" action="{{ url_for('admin.set_due_date', bom_id=version.id) }}" class="d-flex align-items-center gap-1"><label class="form-label small mb-0">마감기한</label><input type="datetime-local" name="due_date" class="form-control form-control-sm" value="{{ version.due_date[:16] if version.due_date else '' }}"><button class="btn btn-sm btn-outline-secondary">저장</button></form><form method="post" action="{{ url_for('admin.withdraw_bom', bom_id=version.id) }}" onsubmit="return confirm('이 BOM의 배포를 취소하시겠습니까? 사용자의 입력과 제출이 즉시 중단됩니다.')"><input class="form-control form-control-sm mb-1" name="reason" placeholder="취소 사유 (사용자에게 안내)"><button class="btn btn-sm btn-outline-danger">배포 취소</button></form></div>{% else %}<span class="text-muted small">읽기 전용</span>{% endif %}</td></tr>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+      <div>
+        <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-wider mb-3">BOM 파일 업로드 <span class="normal-case font-medium text-[#A3AED0]">(현재: {{ version.file_name or '-' }})</span></h4>
+        <form class="admin-upload-form flex items-center gap-2 mb-6" method="post" action="{{ url_for('admin.upload_draft', bom_id=version.id) }}" enctype="multipart/form-data">
+          <input type="file" name="bom_file" accept=".xlsx" required class="file-input file-input-bordered file-input-sm rounded-xl w-full">
+          <button class="btn btn-primary btn-sm rounded-xl shrink-0">업로드</button>
+        </form>
+
+        <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-wider mb-3">국가 설정</h4>
+        <div class="relative" x-data='{
+          open: false,
+          search: "",
+          selected: [{{ version_countries[version.id]|map('tojson')|join(', ') }}],
+          countries: [{{ countries|map('tojson')|join(', ') }}],
+          toggle(c){ if (this.selected.includes(c)) { this.selected = this.selected.filter(x => x !== c) } else { this.selected.push(c) } },
+          get filtered(){ return this.countries.filter(c => c.toLowerCase().includes(this.search.toLowerCase()) && !this.selected.includes(c)) }
+        }'>
+          <form method="post" action="{{ url_for('admin.set_countries', bom_id=version.id) }}">
+            <div class="input input-bordered input-sm rounded-xl w-full h-auto min-h-[2.25rem] flex flex-wrap items-center gap-1 py-1 cursor-text" @click="open = true; $refs.countrySearch.focus()">
+              <template x-for="c in selected" :key="c">
+                <span class="badge badge-secondary gap-1 rounded-lg">
+                  <span x-text="c"></span>
+                  <input type="hidden" name="country" :value="c">
+                  <button type="button" class="leading-none" @click.stop="toggle(c)">✕</button>
+                </span>
+              </template>
+              <input x-ref="countrySearch" x-model="search" @focus="open = true" type="text" class="flex-1 min-w-[80px] border-none outline-none bg-transparent text-sm" placeholder="국가 검색">
+            </div>
+            <div x-show="open" @click.outside="open = false" x-transition x-cloak class="absolute z-50 mt-1 w-full bg-white border border-base-300 rounded-xl shadow-lg max-h-56 overflow-y-auto p-2">
+              <template x-for="c in filtered" :key="c">
+                <button type="button" class="block w-full text-left px-3 py-1.5 rounded-lg hover:bg-base-200 text-sm text-[#1B2559]" @click="toggle(c); search = ''" x-text="c"></button>
+              </template>
+              <div x-show="filtered.length === 0" class="px-3 py-1.5 text-xs text-[#A3AED0]">검색 결과 없음</div>
+            </div>
+            <div class="flex justify-end mt-3"><button class="btn btn-primary btn-sm rounded-xl font-bold">국가 저장</button></div>
+          </form>
+        </div>
+      </div>
+      <div>
+        {% include 'partials/_logistics_settings.html' %}
+      </div>
+    </div>
+
+    <div class="flex items-center justify-end gap-3 pt-6 border-t border-[#F4F7FE]">
+      <form method="post" action="{{ url_for('admin.delete_draft', bom_id=version.id) }}" onsubmit="return confirm('이 초안을 삭제하시겠습니까? 업로드한 BOM 행과 국가 설정이 모두 삭제되며 되돌릴 수 없습니다.')">
+        <button class="btn btn-ghost text-error hover:bg-error/10 rounded-xl px-4">초안 삭제</button>
+      </form>
+      <form method="post" action="{{ url_for('admin.publish_draft', bom_id=version.id) }}" onsubmit="return confirm('이 리비전을 사용자에게 배포하시겠습니까? 기존 배포본은 보관 처리됩니다.')">
+        <button class="btn btn-primary rounded-xl px-10 font-bold shadow-md shadow-blue-100">🚀 검증 후 배포</button>
+      </form>
+    </div>
+  {% else %}
+    <div class="flex items-center justify-center py-10">
+      <span class="text-[#A3AED0] text-sm">진행 중인 초안이 없습니다. 위 버튼으로 새 초안을 생성하세요.</span>
+    </div>
   {% endfor %}
-  </tbody></table></div>
-</div>
+  </div>
 
 </div>
-<div class="tab-pane fade" id="admin-tab-users">
+
+{% for version in versions if version.status == 'published' and not version.is_withdrawn %}
+<dialog id="withdraw-dialog-{{ version.id }}" class="modal">
+  <div class="modal-box rounded-2xl">
+    <h3 class="text-lg font-bold text-[#1B2559] mb-4">배포 관리 · Rev.{{ version.version_no }}</h3>
+    <form method="post" action="{{ url_for('admin.set_due_date', bom_id=version.id) }}" class="flex items-end gap-2 mb-6">
+      <div class="flex-1"><label class="text-xs font-medium text-[#A3AED0] mb-1 block">마감기한</label><input type="datetime-local" name="due_date" class="input input-bordered input-sm rounded-xl w-full" value="{{ version.due_date[:16] if version.due_date else '' }}"></div>
+      <button class="btn btn-ghost btn-sm rounded-xl">저장</button>
+    </form>
+    <div class="border-t border-[#F4F7FE] pt-4">
+      <form method="post" action="{{ url_for('admin.withdraw_bom', bom_id=version.id) }}" onsubmit="return confirm('이 BOM의 배포를 취소하시겠습니까? 사용자의 입력과 제출이 즉시 중단됩니다.')">
+        <label class="text-xs font-medium text-[#A3AED0] mb-1 block">배포 취소 사유</label>
+        <input class="input input-bordered input-sm rounded-xl w-full mb-3" name="reason" placeholder="취소 사유 (사용자에게 안내)">
+        <div class="flex justify-end gap-2">
+          <button type="button" class="btn btn-ghost btn-sm rounded-xl" onclick="document.getElementById('withdraw-dialog-{{ version.id }}').close()">닫기</button>
+          <button class="btn btn-error btn-sm rounded-xl text-white">최종 취소</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+{% endfor %}
+
+</div>
+<div x-show="tab === 'users'" x-cloak>
 
 {% for version in versions if version.status == 'draft' %}<datalist id="bom-parts-{{ version.id }}">{% for part in draft_parts[version.id] %}<option value="{{ part.part_no }}">{{ part.row_num }} · {{ part.part_name }}</option>{% endfor %}</datalist>{% endfor %}
-<div class="portal-card"><h3 class="card-title"><i class="bi bi-people"></i> 사용자 등록/관리</h3><form id="create-user-form" method="post" action="{{ url_for('admin.create_user') }}" class="admin-user-form"><input name="username" class="form-control" placeholder="사용자명" required><input name="password" type="password" class="form-control" placeholder="초기 비밀번호" required><select name="role" class="form-select"><option value="user">사용자</option><option value="admin">관리자</option></select>{% if active and categories_by_version.get(active.id) %}<div class="dropdown create-user-categories-dropdown"><button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle category-select-button" data-bs-toggle="dropdown" data-bs-display="static">담당 지정</button><div class="dropdown-menu category-menu p-2">{% for category in categories_by_version[active.id] %}<div class="form-check category-check"><input class="form-check-input" type="checkbox" name="categories" value="{{ category }}" id="create-cat-{{ loop.index }}"><label class="form-check-label" for="create-cat-{{ loop.index }}">{{ category }}</label></div>{% endfor %}</div></div>{% endif %}<button class="btn btn-primary">사용자 생성</button></form><div class="admin-user-table-toolbar"><input type="text" class="form-control form-control-sm admin-user-search" placeholder="사용자 검색"><button type="button" id="admin-user-categories-save-btn" class="btn btn-sm btn-primary">담당 품목 저장</button><button type="button" id="admin-user-delete-btn" class="btn btn-sm btn-outline-danger">선택 삭제</button></div><div class="table-responsive"><table class="table bom-table admin-user-table" id="admin-user-table"><thead><tr><th></th><th>사용자 ID</th><th>권한</th><th>담당 품목</th></tr></thead><tbody>{% for user in users %}<tr data-user-id="{{ user.id }}" data-username="{{ user.username|lower }}"><td><input type="checkbox" class="user-row-check" value="{{ user.id }}"{% if user.id == current_user.id %} disabled{% endif %}></td><td>{{ user.username }}</td><td><select class="form-select form-select-sm admin-role-select" data-user-id="{{ user.id }}"{% if user.id == current_user.id %} disabled{% endif %}><option value="user" {% if user.role == 'user' %}selected{% endif %}>사용자</option><option value="admin" {% if user.role == 'admin' %}selected{% endif %}>관리자</option></select></td><td>{% if active and categories_by_version.get(active.id) %}<div class="dropdown user-categories-picker" data-user-id="{{ user.id }}"><button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle category-select-button{% if user_categories.get(user.id) %} has-selection{% endif %}" data-bs-toggle="dropdown" data-bs-display="static">{% if user_categories.get(user.id) %}선택: {{ user_categories[user.id]|join(', ') }}{% else %}담당 지정{% endif %}</button><div class="dropdown-menu category-menu p-2">{% for category in categories_by_version[active.id] %}<div class="form-check category-check"><input class="form-check-input user-category-check" type="checkbox" value="{{ category }}" id="user-cat-{{ user.id }}-{{ loop.index }}"{% if category in user_categories.get(user.id, []) %} checked{% endif %}><label class="form-check-label" for="user-cat-{{ user.id }}-{{ loop.index }}">{{ category }}</label></div>{% endfor %}</div></div>{% else %}<span class="text-muted small">-</span>{% endif %}</td></tr>{% endfor %}</tbody></table></div></div>
+<div class="bg-white rounded-2xl p-6 shadow-sm border-none mb-6"><h3 class="text-lg font-bold text-[#1B2559] mb-4 flex items-center gap-2"><i class="bi bi-people"></i> 사용자 등록/관리</h3><form id="create-user-form" method="post" action="{{ url_for('admin.create_user') }}" class="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-5 gap-3 items-center"><input name="username" class="input input-bordered w-full rounded-xl bg-base-100 border-base-300 focus:border-primary focus:outline-none transition-all text-sm py-2 px-4" placeholder="사용자명" required><input name="password" type="password" class="input input-bordered w-full rounded-xl bg-base-100 border-base-300 focus:border-primary focus:outline-none transition-all text-sm py-2 px-4" placeholder="초기 비밀번호" required><select name="role" class="select select-bordered w-full md:max-w-[130px] rounded-xl bg-base-100 border-base-300 focus:border-primary focus:outline-none transition-all text-sm py-2 px-4"><option value="user">사용자</option><option value="admin">관리자</option></select>{% if active and categories_by_version.get(active.id) %}<div class="relative create-user-categories-dropdown" x-data="{open: false}"><button type="button" class="btn btn-outline border-base-300 btn-md rounded-xl font-bold w-full category-select-button flex items-center justify-between" @click="open = !open" @click.outside="open = false"><span>담당 지정</span> <i class="bi bi-chevron-down text-xs"></i></button><div class="category-menu absolute z-50 bg-white p-2" x-show="open" x-transition x-cloak>{% for category in categories_by_version[active.id] %}<div class="category-check"><input class="checkbox checkbox-xs checkbox-primary" type="checkbox" name="categories" value="{{ category }}" id="create-cat-{{ loop.index }}"><label class="form-check-label text-sm" for="create-cat-{{ loop.index }}">{{ category }}</label></div>{% endfor %}</div></div>{% endif %}<button class="btn btn-primary btn-md rounded-xl font-bold w-full">사용자 생성</button></form><div class="admin-user-table-toolbar flex items-center gap-3 my-3"><input type="text" class="input input-bordered input-sm rounded-xl bg-base-100 border-base-300 focus:border-primary focus:outline-none transition-all admin-user-search" placeholder="사용자 검색"><button type="button" id="admin-user-categories-save-btn" class="btn btn-primary btn-sm rounded-lg">담당 품목 저장</button><button type="button" id="admin-user-delete-btn" class="btn btn-error btn-outline btn-sm rounded-lg">선택 삭제</button></div><div class="overflow-visible"><table class="table table-fixed table-zebra bom-table w-full text-[#1B2559] admin-user-table text-sm" id="admin-user-table"><colgroup><col style="width:48px"><col style="width:32%"><col style="width:130px"><col></colgroup><thead><tr class="bg-transparent border-b border-base-content/10"><th class="text-[#A3AED0] text-xs font-bold uppercase tracking-wider bg-transparent border-b border-base-content/10 py-4 text-center"><input type="checkbox" id="admin-user-select-all" class="checkbox checkbox-sm checkbox-primary"></th><th class="text-[#A3AED0] text-xs font-bold uppercase tracking-wider bg-transparent border-b border-base-content/10 py-4 text-left">사용자 ID</th><th class="text-[#A3AED0] text-xs font-bold uppercase tracking-wider bg-transparent border-b border-base-content/10 py-4 text-center">권한</th><th class="text-[#A3AED0] text-xs font-bold uppercase tracking-wider bg-transparent border-b border-base-content/10 py-4 text-left">담당 품목</th></tr></thead><tbody>{% for user in users %}<tr data-user-id="{{ user.id }}" data-username="{{ user.username|lower }}" class="border-b border-base-content/5 hover:bg-base-100/50"><td class="text-center align-middle"><input type="checkbox" class="checkbox checkbox-sm checkbox-primary user-row-check" value="{{ user.id }}"{% if user.id == current_user.id %} disabled{% endif %}></td><td class="text-left align-middle text-[#1B2559] font-semibold text-sm">{{ user.username }}</td><td class="text-center align-middle"><select class="select select-bordered select-sm rounded-xl bg-base-100 border-base-300 admin-role-select text-[#1B2559] font-medium" data-user-id="{{ user.id }}"{% if user.id == current_user.id %} disabled{% endif %}><option value="user" {% if user.role == 'user' %}selected{% endif %}>사용자</option><option value="admin" {% if user.role == 'admin' %}selected{% endif %}>관리자</option></select></td><td class="text-left align-middle">{% if active and categories_by_version.get(active.id) %}<div class="relative user-categories-picker" data-user-id="{{ user.id }}" x-data="{open: false}"><button type="button" class="btn btn-outline border-base-300 btn-sm rounded-xl category-select-button flex items-center justify-between gap-1{% if user_categories.get(user.id) %} has-selection{% endif %}" @click="open = !open" @click.outside="open = false"><span>{% if user_categories.get(user.id) %}선택: {{ user_categories[user.id]|join(', ') }}{% else %}담당 지정{% endif %}</span> <i class="bi bi-chevron-down text-xs"></i></button><div class="category-menu absolute z-50 bg-white p-2" x-show="open" x-transition x-cloak>{% for category in categories_by_version[active.id] %}<div class="category-check"><input class="checkbox checkbox-xs checkbox-primary user-category-check" type="checkbox" value="{{ category }}" id="user-cat-{{ user.id }}-{{ loop.index }}"{% if category in user_categories.get(user.id, []) %} checked{% endif %}><label class="form-check-label text-sm" for="user-cat-{{ user.id }}-{{ loop.index }}">{{ category }}</label></div>{% endfor %}</div></div>{% else %}<span class="text-[#A3AED0] text-xs">-</span>{% endif %}</td></tr>{% endfor %}</tbody></table></div></div>
 
 </div>
-<div class="tab-pane fade" id="admin-tab-logistics">
+<div x-show="tab === 'logistics'" x-cloak>
 
-<div class="portal-card">
-  <h3 class="card-title"><i class="bi bi-truck"></i> 국가별 컨테이너 운송비 (최신값)</h3>
-  <div class="table-responsive"><table class="table bom-table"><thead><tr><th>국가</th><th>컨테이너 운송비</th><th>기준일</th><th>작업</th></tr></thead><tbody>
-  {% for rate in logistics_rates %}<tr><td>{{ rate.country }}</td><td>{{ rate.container_freight }}</td><td>{{ rate.effective_date }}</td><td class="d-flex gap-1"><button type="button" class="btn btn-sm btn-outline-secondary logistics-rate-edit-btn" data-country="{{ rate.country }}" data-date="{{ rate.effective_date }}" data-freight="{{ rate.container_freight }}">수정</button><form method="post" action="{{ url_for('admin.delete_logistics_rate', country=rate.country, effective_date=rate.effective_date) }}" onsubmit="return confirm('이 운임을 삭제하시겠습니까?')"><button class="btn btn-sm btn-outline-danger">삭제</button></form></td></tr>
-  {% else %}<tr><td colspan="4" class="text-center text-muted py-4">등록된 운임이 없습니다.</td></tr>{% endfor %}
+<div class="bg-white rounded-2xl p-6 shadow-sm border-none mb-6">
+  <h3 class="text-lg font-bold text-[#1B2559] mb-4 flex items-center gap-2"><i class="bi bi-truck"></i> 국가별 컨테이너 운송비 (최신값)</h3>
+  <div class="overflow-x-auto"><table class="table table-fixed table-zebra bom-table w-full text-[#1B2559] text-sm"><colgroup><col style="width:25%"><col style="width:25%"><col style="width:20%"><col style="width:30%"></colgroup><thead><tr class="bg-transparent border-b border-base-content/10"><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-left">국가</th><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-right">컨테이너 운송비</th><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-left">기준일</th><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-center">작업</th></tr></thead><tbody>
+  {% for rate in logistics_rates %}<tr><td class="text-left text-sm font-medium">{{ rate.country }}</td><td class="text-right text-sm font-medium">{{ "{:,.0f}".format(rate.container_freight) if rate.container_freight is not none else '-' }}</td><td class="text-left text-sm font-medium">{{ rate.effective_date }}</td><td class="flex items-center justify-center gap-2"><button type="button" class="btn btn-outline btn-primary btn-sm rounded-lg logistics-rate-edit-btn" data-country="{{ rate.country }}" data-date="{{ rate.effective_date }}" data-freight="{{ rate.container_freight }}"><i class="bi bi-pencil-square"></i> 수정</button><form method="post" action="{{ url_for('admin.delete_logistics_rate', country=rate.country, effective_date=rate.effective_date) }}" onsubmit="return confirm('이 운임을 삭제하시겠습니까?')"><button class="btn btn-outline btn-error btn-sm rounded-lg"><i class="bi bi-trash"></i> 삭제</button></form></td></tr>
+  {% else %}<tr><td colspan="4" class="text-center text-[#A3AED0] py-5">등록된 운임이 없습니다.</td></tr>{% endfor %}
   </tbody></table></div>
 </div>
 
-<div class="portal-card">
-  <h3 class="card-title"><i class="bi bi-plus-circle"></i> 운임 등록/갱신</h3>
+<div class="bg-white rounded-2xl p-6 shadow-sm border-none mb-6">
+  <h3 class="text-lg font-bold text-[#1B2559] mb-4 flex items-center gap-2"><i class="bi bi-plus-circle"></i> 운임 등록/갱신</h3>
   <form method="post" action="{{ url_for('admin.set_logistics_rate') }}" class="admin-logistics-rate-form">
-    <div class="row g-1 mb-1">
-      <div class="col"><label class="form-label small mb-0">국가</label><select name="country" class="form-select form-select-sm" required><option value="">선택</option>{% for country in countries if country != '한국' %}<option value="{{ country }}">{{ country }}</option>{% endfor %}</select></div>
-      <div class="col"><label class="form-label small mb-0">기준일</label><input type="date" name="effective_date" class="form-control form-control-sm" required></div>
-      <div class="col"><label class="form-label small mb-0">컨테이너 운송비</label><input type="number" step="any" name="container_freight" class="form-control form-control-sm"></div>
+    <div class="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-5 gap-3 items-end mb-3">
+      <div><label class="text-xs font-medium text-[#A3AED0] mb-1 block">국가</label><select name="country" class="select select-bordered w-full rounded-xl bg-base-100 border-base-300 focus:border-primary focus:outline-none transition-all text-sm py-2 px-4" required><option value="">선택</option>{% for country in countries if country != '한국' %}<option value="{{ country }}">{{ country }}</option>{% endfor %}</select></div>
+      <div><label class="text-xs font-medium text-[#A3AED0] mb-1 block">기준일</label><input type="date" name="effective_date" class="input input-bordered w-full rounded-xl bg-base-100 border-base-300 focus:border-primary focus:outline-none transition-all text-sm py-2 px-4" required></div>
+      <div><label class="text-xs font-medium text-[#A3AED0] mb-1 block">컨테이너 운송비</label><input type="number" step="any" name="container_freight" class="input input-bordered w-full rounded-xl bg-base-100 border-base-300 focus:border-primary focus:outline-none transition-all text-sm py-2 px-4"></div>
+      <button class="btn btn-primary btn-md rounded-xl font-bold w-full">운임 저장</button>
     </div>
-    <button class="btn btn-sm btn-primary">운임 저장</button>
   </form>
 </div>
 
 </div>
 </div>
 <script>document.querySelectorAll('form[action*="/rows"] input[name="anchor_part_no"]').forEach(input=>{const form=input.closest('form'), label=form.querySelector('strong'); if(label){const m=label.textContent.match(/Rev\.(\d+)/); const select=[...document.querySelectorAll('datalist')].find(x=>x.id.endsWith(m&&m[1]||'')); if(select) input.setAttribute('list',select.id);}});</script>
+<script>
+document.addEventListener('change', (event) => {
+  if (event.target.id !== 'admin-user-select-all') return;
+  document.querySelectorAll('.user-row-check:not(:disabled)').forEach((cb) => { cb.checked = event.target.checked; });
+});
+</script>
 <script>
 document.addEventListener('click', (event) => {
   const btn = event.target.closest('.logistics-rate-edit-btn');
@@ -89,14 +188,17 @@ document.addEventListener('submit', async (event) => {
     tr.dataset.userId = result.user.id;
     tr.dataset.username = result.user.username.toLowerCase();
     const checkTd = document.createElement('td');
+    checkTd.className = 'text-center align-middle';
     const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox'; checkbox.className = 'user-row-check'; checkbox.value = result.user.id;
+    checkbox.type = 'checkbox'; checkbox.className = 'checkbox checkbox-sm checkbox-primary user-row-check'; checkbox.value = result.user.id;
     checkTd.appendChild(checkbox);
     const nameTd = document.createElement('td');
+    nameTd.className = 'text-left align-middle text-[#1B2559] font-semibold text-sm';
     nameTd.textContent = result.user.username;
     const roleTd = document.createElement('td');
+    roleTd.className = 'text-center align-middle';
     const roleSelect = document.createElement('select');
-    roleSelect.className = 'form-select form-select-sm admin-role-select';
+    roleSelect.className = 'select select-bordered select-sm rounded-xl bg-base-100 border-base-300 admin-role-select text-[#1B2559] font-medium';
     roleSelect.dataset.userId = result.user.id;
     ['user', 'admin'].forEach((value) => {
       const option = document.createElement('option');
@@ -106,57 +208,67 @@ document.addEventListener('submit', async (event) => {
     });
     roleTd.appendChild(roleSelect);
     const catTd = document.createElement('td');
+    catTd.className = 'text-left align-middle';
     const createDropdown = form.querySelector('.create-user-categories-dropdown');
     if (createDropdown) {
-      const categoryValues = [...createDropdown.querySelectorAll('.form-check-input')].map((cb) => cb.value);
+      const categoryValues = [...createDropdown.querySelectorAll('input[type="checkbox"]')].map((cb) => cb.value);
       const picker = document.createElement('div');
-      picker.className = 'dropdown user-categories-picker';
+      picker.className = 'relative user-categories-picker';
+      picker.setAttribute('x-data', '{open: false}');
       picker.dataset.userId = result.user.id;
       const pickerButton = document.createElement('button');
       pickerButton.type = 'button';
-      pickerButton.className = 'btn btn-outline-secondary btn-sm dropdown-toggle category-select-button';
-      pickerButton.setAttribute('data-bs-toggle', 'dropdown');
-      pickerButton.setAttribute('data-bs-display', 'static');
-      pickerButton.textContent = result.user.categories.length ? `선택: ${result.user.categories.join(', ')}` : '담당 지정';
+      pickerButton.className = 'btn btn-outline border-base-300 btn-sm rounded-xl category-select-button flex items-center justify-between gap-1';
+      pickerButton.setAttribute('@click', 'open = !open');
+      pickerButton.setAttribute('@click.outside', 'open = false');
+      const pickerLabel = document.createElement('span');
+      pickerLabel.textContent = result.user.categories.length ? `선택: ${result.user.categories.join(', ')}` : '담당 지정';
+      const pickerChevron = document.createElement('i');
+      pickerChevron.className = 'bi bi-chevron-down text-xs';
+      pickerButton.append(pickerLabel, pickerChevron);
       if (result.user.categories.length) pickerButton.classList.add('has-selection');
       const menu = document.createElement('div');
-      menu.className = 'dropdown-menu category-menu p-2';
+      menu.className = 'category-menu absolute z-50 bg-white p-2';
+      menu.setAttribute('x-show', 'open');
+      menu.setAttribute('x-transition', '');
+      menu.setAttribute('x-cloak', '');
       categoryValues.forEach((cat, idx) => {
-        const wrap = document.createElement('div'); wrap.className = 'form-check category-check';
+        const wrap = document.createElement('div'); wrap.className = 'category-check';
         const input = document.createElement('input');
-        input.type = 'checkbox'; input.className = 'form-check-input';
+        input.type = 'checkbox'; input.className = 'checkbox checkbox-xs checkbox-primary';
         input.value = cat; input.id = `user-cat-${result.user.id}-${idx + 1}`;
         if (result.user.categories.includes(cat)) input.checked = true;
         const label = document.createElement('label');
-        label.className = 'form-check-label'; label.htmlFor = input.id; label.textContent = cat;
+        label.className = 'form-check-label text-sm'; label.htmlFor = input.id; label.textContent = cat;
         wrap.append(input, label);
         menu.appendChild(wrap);
       });
       picker.append(pickerButton, menu);
       catTd.appendChild(picker);
+      if (window.Alpine) window.Alpine.initTree(picker);
     } else {
       const dash = document.createElement('span');
-      dash.className = 'text-muted small'; dash.textContent = '-';
+      dash.className = 'text-[#A3AED0] text-xs'; dash.textContent = '-';
       catTd.appendChild(dash);
     }
     tr.append(checkTd, nameTd, roleTd, catTd);
     tbody.appendChild(tr);
     form.reset();
-    form.querySelectorAll('.create-user-categories-dropdown .form-check-input').forEach((box) => box.checked = false);
+    form.querySelectorAll('.create-user-categories-dropdown input[type="checkbox"]').forEach((box) => box.checked = false);
     const dropdownButton = form.querySelector('.create-user-categories-dropdown .category-select-button');
-    if (dropdownButton) { dropdownButton.textContent = '담당 지정'; dropdownButton.classList.remove('has-selection'); }
+    if (dropdownButton) { dropdownButton.querySelector('span').textContent = '담당 지정'; dropdownButton.classList.remove('has-selection'); }
     alert(result.message);
   } catch (error) {
     alert(error.message || '사용자 생성에 실패했습니다.');
   }
 });
 document.addEventListener('change', (event) => {
-  const box = event.target.closest('.create-user-categories-dropdown .form-check-input, .user-categories-picker .form-check-input');
+  const box = event.target.closest('.create-user-categories-dropdown input[type="checkbox"], .user-categories-picker input[type="checkbox"]');
   if (!box) return;
   const dropdown = box.closest('.create-user-categories-dropdown, .user-categories-picker');
-  const selected = [...dropdown.querySelectorAll('.form-check-input:checked')];
+  const selected = [...dropdown.querySelectorAll('input[type="checkbox"]:checked')];
   const button = dropdown.querySelector('.category-select-button');
-  button.textContent = selected.length ? `선택: ${selected.map((s) => s.value).join(', ')}` : '담당 지정';
+  button.querySelector('span').textContent = selected.length ? `선택: ${selected.map((s) => s.value).join(', ')}` : '담당 지정';
   button.classList.toggle('has-selection', selected.length > 0);
 });
 document.addEventListener('click', async (event) => {
@@ -165,14 +277,14 @@ document.addEventListener('click', async (event) => {
   try {
     await Promise.all(pickers.map(async (picker) => {
       const userId = picker.dataset.userId;
-      const selected = [...picker.querySelectorAll('.form-check-input:checked')].map((cb) => cb.value);
+      const selected = [...picker.querySelectorAll('input[type="checkbox"]:checked')].map((cb) => cb.value);
       const body = new URLSearchParams();
       selected.forEach((cat) => body.append('categories', cat));
       const response = await fetch(`/admin/users/${userId}/categories`, {method: 'POST', headers: {'Accept': 'application/json'}, body});
       const result = await response.json();
       if (!response.ok) throw new Error(result.message);
       const button = picker.querySelector('.category-select-button');
-      button.textContent = result.categories.length ? `선택: ${result.categories.join(', ')}` : '담당 지정';
+      button.querySelector('span').textContent = result.categories.length ? `선택: ${result.categories.join(', ')}` : '담당 지정';
       button.classList.toggle('has-selection', result.categories.length > 0);
     }));
     alert('담당 품목을 저장했습니다.');
