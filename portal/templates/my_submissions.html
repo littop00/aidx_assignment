@@ -1,8 +1,14 @@
-{% extends "base.html" %}
-{% block title %}내 제출 현황 | 재료비 관리 포탈{% endblock %}
+{% extends "base_new.html" %}
+{% block title %}내 제출 현황 | TMS Portal{% endblock %}
+{% block page_title %}내 제출 현황{% endblock %}
 {% block content %}
-<h1>내 제출 현황</h1>
-<p class="text-muted mb-4">내가 제출한 BOM과 검토 결과를 확인합니다.</p>
-<div class="portal-card p-0 overflow-hidden"><table class="table mb-0 align-middle review-table"><thead><tr><th>차종</th><th>BOM</th><th>제출일</th><th>상태</th><th>검토 의견</th><th></th></tr></thead><tbody>
-{% for item in submissions %}<tr><td>{{ item.vehicle or '-' }}</td><td>{{ item.bom_name }}</td><td>{{ item.submitted_at or '-' }}</td><td><span class="badge text-bg-{{ 'success' if item.status == 'approved' else 'warning' if item.status in ('returned', 'auto_submitted') else 'primary' if item.status == 'submitted' else 'secondary' }}">{{ {'draft':'작성 중','submitted':'검토 대기','approved':'승인','returned':'반려','auto_submitted':'자동제출'}.get(item.status, item.status) }}</span></td><td>{{ item.review_comment or '-' }}</td><td>{% if item.snapshot_json %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('bom.submission_detail', submission_id=item.id) }}">입력 내용</a>{% endif %}</td></tr>{% else %}<tr><td colspan="6" class="text-center text-muted py-5">제출한 BOM이 없습니다.</td></tr>{% endfor %}</tbody></table></div>
+<p class="text-sm text-[#A3AED0] mb-4 -mt-2">내가 제출한 BOM과 검토 결과를 확인합니다.</p>
+<div class="bg-white rounded-2xl p-6 md:p-8 shadow-sm border-none mb-6 overflow-x-auto">
+<table class="table table-zebra w-full text-[#1B2559] text-sm">
+<thead><tr class="bg-transparent border-b border-base-content/10"><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-left">차종</th><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-left">BOM</th><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-left">제출일</th><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-center">상태</th><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-left">검토 의견</th><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-center"></th></tr></thead>
+<tbody>
+{% for item in submissions %}<tr class="border-b border-base-content/5 hover:bg-base-100/50"><td class="text-left text-sm font-medium">{{ item.vehicle or '-' }}</td><td class="text-left text-sm font-medium">{{ item.bom_name }}</td><td class="text-left text-sm font-medium">{{ item.submitted_at or '-' }}</td><td class="text-center"><span class="badge badge-lg rounded-lg font-semibold px-3 py-1 border-none {{ 'bg-emerald-50 text-emerald-600' if item.status == 'approved' else 'bg-amber-50 text-amber-600' if item.status in ('returned', 'auto_submitted') else 'bg-blue-50 text-blue-600' if item.status == 'submitted' else 'bg-gray-100 text-gray-500' }}">{{ {'draft':'작성 중','submitted':'검토 대기','approved':'승인','returned':'반려','auto_submitted':'자동제출'}.get(item.status, item.status) }}</span></td><td class="text-left text-sm font-medium">{{ item.review_comment or '-' }}</td><td class="text-center">{% if item.snapshot_json %}<a class="btn btn-ghost btn-sm rounded-xl" href="{{ url_for('bom.submission_detail', submission_id=item.id) }}">입력 내용</a>{% endif %}</td></tr>{% else %}<tr><td colspan="6" class="text-center text-[#A3AED0] py-5">제출한 BOM이 없습니다.</td></tr>{% endfor %}
+</tbody>
+</table>
+</div>
 {% endblock %}

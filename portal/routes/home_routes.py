@@ -54,7 +54,7 @@ def index():
         for row in overseas_rows
     ]
     return render_template(
-        "home.html",
+        "dashboard_new.html",
         total_parts=len(parts), missing=missing, usd=usd, eur=eur,
         vehicle_summary=vehicle_summary,
         domestic_case_total=domestic_case_total,

@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="corporate">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}TMS Portal{% endblock %}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css" rel="stylesheet" type="text/css">
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <link href="{{ url_for('static', filename='style_new.css') }}" rel="stylesheet">
+    <style>
+        body { font-family: 'Plus Jakarta Sans', 'Noto Sans KR', sans-serif; }
+        [x-cloak] { display: none !important; }
+    </style>
+</head>
+<body class="bg-base-200 text-[#1B2559] min-h-screen flex flex-col md:flex-row antialiased">
+<div id="toast-slot" class="toast-stack"></div>
+
+{% if current_user.is_authenticated %}
+<aside class="w-full md:w-64 bg-white min-h-screen flex flex-col justify-between border-r border-[#E0E5F2] shadow-sm z-30 shrink-0">
+  <div>
+    <div class="h-20 flex items-center px-6 border-b border-[#F4F7FE]">
+      <span class="text-xl font-extrabold tracking-tight bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent flex items-center gap-2">
+        <i class="bi bi-boxes text-blue-600"></i> TMS Portal
+      </span>
+    </div>
+
+    <nav class="p-4">
+      <ul class="menu menu-md w-full gap-1 p-0">
+        <li class="menu-title text-[#A3AED0] font-bold text-xs tracking-wider mb-2 px-2">DASHBOARD</li>
+        <li>
+          <a href="{{ url_for('home.index') }}" class="flex items-center gap-3 px-4 py-3 rounded-xl font-medium {% if request.endpoint == 'home.index' %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
+            <i class="bi bi-speedometer2 text-lg"></i> 대시보드
+          </a>
+        </li>
+        <li>
+          <a href="{{ url_for('bom.index') }}" class="flex items-center gap-3 px-4 py-3 rounded-xl font-medium {% if request.endpoint in ('bom.index', 'bom.grid', 'bom.summary') %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
+            <i class="bi bi-table text-lg"></i> BOM 조회
+          </a>
+        </li>
+
+        {% if current_user.role != 'admin' %}
+        <li class="menu-title text-[#A3AED0] font-bold text-xs tracking-wider mt-4 mb-2 px-2">MANAGEMENT</li>
+        <li>
+          <a href="{{ url_for('bom.my_bom') }}" class="flex items-center gap-3 px-4 py-3 rounded-xl font-medium {% if request.endpoint == 'bom.my_bom' %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
+            <i class="bi bi-pencil-square text-lg"></i> 내 BOM 관리
+          </a>
+        </li>
+        <li>
+          <a href="{{ url_for('bom.submissions') }}" class="flex items-center gap-3 px-4 py-3 rounded-xl font-medium {% if request.endpoint and request.endpoint.startswith('bom.submission') %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
+            <i class="bi bi-send-check text-lg"></i> 내 제출 현황
+          </a>
+        </li>
+        {% endif %}
+
+        {% if current_user.role == 'admin' %}
+        <li class="menu-title text-[#A3AED0] font-bold text-xs tracking-wider mt-4 mb-2 px-2">ADMINISTRATION</li>
+        <li>
+          <a href="{{ url_for('admin.bom_versions') }}" class="flex items-center gap-3 px-4 py-3 rounded-xl font-medium {% if request.endpoint == 'admin.bom_versions' %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
+            <i class="bi bi-clipboard2-check text-lg"></i> BOM 관리자
+          </a>
+        </li>
+        <li>
+          <a href="{{ url_for('admin.reviews') }}" class="flex items-center gap-3 px-4 py-3 rounded-xl font-medium {% if request.endpoint and request.endpoint.startswith('admin.review') %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
+            <i class="bi bi-clipboard-check text-lg"></i> 제출 검토
+          </a>
+        </li>
+        {% endif %}
+      </ul>
+    </nav>
+  </div>
+
+  <div class="p-4 border-t border-[#F4F7FE]" x-data="{ open: false }">
+    <div class="relative">
+      <button type="button" @click="open = !open" @click.outside="open = false" class="w-full flex items-center justify-between p-2 rounded-xl hover:bg-gray-50 transition-colors">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-500 flex items-center justify-center text-white font-bold text-sm shadow-sm">
+            {{ current_user.username[:2] | upper }}
+          </div>
+          <div class="text-left">
+            <p class="text-sm font-bold text-[#1B2559]">{{ current_user.username }}</p>
+            <p class="text-xs text-[#A3AED0] capitalize">{{ current_user.role }}</p>
+          </div>
+        </div>
+        <i class="bi bi-chevron-down text-xs text-[#A3AED0]"></i>
+      </button>
+
+      <ul class="absolute bottom-14 left-0 w-full menu bg-white rounded-2xl shadow-xl shadow-[#edf2f9] border border-[#E0E5F2]/50 p-2 z-50 gap-1" x-show="open" x-transition x-cloak>
+        <li><a href="{{ url_for('auth.logout') }}" class="text-red-500 hover:bg-red-50 rounded-xl font-medium"><i class="bi bi-box-arrow-right"></i> 로그아웃</a></li>
+      </ul>
+    </div>
+  </div>
+</aside>
+
+<div class="flex-1 flex flex-col min-w-0">
+  <header class="h-20 flex items-center justify-between px-6 md:px-10 z-20 shrink-0">
+    <div>
+      <p class="text-xs font-medium text-[#A3AED0]">Pages / {{ request.endpoint.split('.')[-1] | capitalize if request.endpoint else 'Dashboard' }}</p>
+      <h1 class="text-2xl font-extrabold tracking-tight text-[#1B2559] mt-0.5">{% block page_title %}Main Dashboard{% endblock %}</h1>
+    </div>
+  </header>
+
+  <main class="flex-1 p-6 md:p-10 pt-0 overflow-y-auto">
+    {% with messages = get_flashed_messages() %}
+        {% if messages %}
+            {% for message in messages %}
+            <div class="alert bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-2xl shadow-sm mb-6 flex items-center gap-3 p-4">
+              <i class="bi bi-check-circle-fill text-lg"></i>
+              <span class="text-sm font-semibold">{{ message }}</span>
+            </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+</div>
+
+{% else %}
+    <div class="w-full min-h-screen flex items-center justify-center p-6">
+        {% block guest_content %}{% endblock %}
+    </div>
+{% endif %}
+
+<script>
+(() => {
+
+    function formatAmount(value) {
+        return new Intl.NumberFormat("ko-KR", {maximumFractionDigits: 0}).format(Number(value || 0));
+    }
+
+    function updateSavedRow(row, payload) {
+        if (payload.countries) {
+            Object.entries(payload.countries).forEach(([country, values]) => {
+                ["material_cost", "logistics_cost", "total_cost"].forEach((name) => {
+                    const cell = row.querySelector(`[data-cost="${country}__${name}"]`);
+                    if (cell) cell.textContent = formatAmount(values[name]);
+                });
+            });
+        }
+        ["material_cost", "logistics_cost", "total_cost"].forEach((name) => {
+            const cell = row.querySelector(`[data-cost="${name}"]`);
+            if (cell) cell.textContent = formatAmount(payload[name]);
+        });
+        const badge = row.querySelector(".status-done, .status-missing");
+        if (badge) {
+            badge.className = `badge ${payload.status_done ? "status-done" : "status-missing"}`;
+            badge.innerHTML = payload.status_done
+                ? '<i class="bi bi-check-circle"></i> 입력 완료'
+                : '<i class="bi bi-exclamation-circle"></i> 미입력';
+        }
+        const saveStatus = row.querySelector(".row-save-status");
+        if (saveStatus && payload.updated_at) {
+            const time = payload.updated_at.replace("T", " ");
+            saveStatus.textContent = payload.updated_by ? `${time} · ${payload.updated_by}` : time;
+        }
+        const status = row.querySelector(".row-save-message");
+        if (status) status.textContent = payload.error ? `Input error: ${payload.error}` : "Saved";
+        const button = row.querySelector(".save-row-btn");
+        if (button) button.innerHTML = payload.error
+            ? '<i class="bi bi-exclamation-triangle"></i> Error'
+            : '<i class="bi bi-check2"></i> Saved';
+        row.classList.toggle("row-save-error", Boolean(payload.error));
+    }
+
+    function highlightRow(row) {
+        if (!row) return;
+        row.scrollIntoView({behavior: "smooth", block: "center"});
+        row.classList.remove("row-highlight");
+        void row.offsetWidth;
+        row.classList.add("row-highlight");
+        window.setTimeout(() => row.classList.remove("row-highlight"), 1600);
+    }
+    window.highlightBomRow = highlightRow;
+
+    function showSaveMessage(message, isError = false, opts = {}) {
+        const slot = document.getElementById("toast-slot");
+        if (!slot) return;
+        const item = document.createElement("div");
+        item.className = `toast-item ${isError ? "toast-error" : "toast-success"}`;
+        const text = document.createElement("span");
+        text.textContent = message;
+        item.appendChild(text);
+        if (isError) {
+            const closeBtn = document.createElement("button");
+            closeBtn.type = "button";
+            closeBtn.className = "toast-close";
+            closeBtn.setAttribute("aria-label", "알림 닫기");
+            closeBtn.innerHTML = "&times;";
+            closeBtn.addEventListener("click", (event) => { event.stopPropagation(); item.remove(); });
+            item.appendChild(closeBtn);
+        } else {
+            window.setTimeout(() => item.remove(), 2500);
+        }
+        if (opts.onClick) {
+            item.classList.add("toast-clickable");
+            item.addEventListener("click", opts.onClick);
+        }
+        slot.appendChild(item);
+    }
+
+    function updateLastSavedIndicator() {
+        const indicator = document.getElementById("last-saved-indicator");
+        if (!indicator) return;
+        const time = new Date().toLocaleTimeString("ko-KR", {hour: "2-digit", minute: "2-digit"});
+        indicator.textContent = `마지막 저장: ${time}`;
+    }
+
+    async function saveRow(row, showSuccess = false) {
+        if (!row || row.dataset.saving === "true") return;
+        row.dataset.saving = "true";
+        const button = row.querySelector(".save-row-btn");
+        const dirtyFields = [...row.querySelectorAll(".row-autosave.cell-dirty")];
+        const data = new URLSearchParams();
+        row.querySelectorAll("[name]").forEach((field) => data.append(field.name, field.value));
+        try {
+            const response = await fetch(row.dataset.saveUrl, {
+                method: "POST",
+                credentials: "same-origin",
+                headers: {"Accept": "application/json", "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"},
+                body: data.toString(),
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+            updateSavedRow(row, payload);
+            row.dataset.saving = "false";
+            dirtyFields.forEach((field) => {
+                field.classList.remove("cell-dirty", "cell-error");
+                field.removeAttribute("title");
+                field.classList.add("cell-saved-flash");
+                window.setTimeout(() => field.classList.remove("cell-saved-flash"), 900);
+            });
+            updateLastSavedIndicator();
+            if (showSuccess) showSaveMessage("&#51200;&#51109;&#46104;&#50632;&#49845;&#45768;&#45796;.");
+        } catch (error) {
+            console.error("BOM row save failed", error);
+            row.dataset.saving = "false";
+            const message = error.message || "저장에 실패했습니다. 다시 시도해 주세요.";
+            dirtyFields.forEach((field) => { field.classList.add("cell-error"); field.title = message; });
+            showSaveMessage(message, true, {onClick: () => highlightRow(row)});
+        }
+    }
+    window.saveBomRow = saveRow;
+    window.showToast = showSaveMessage;
+
+    function applyKdLocationLock(select) {
+        if (select.disabled) return;
+        const prefix = select.name.split("__")[0];
+        const location = select.closest("tr")?.querySelector(`[name="${prefix}__sourcing_part_location"]`);
+        if (!location) return;
+        if (select.value === "KD") { location.value = ""; location.disabled = true; }
+        else { location.disabled = false; }
+    }
+    function applyKdMaterialDefault(select) {
+        if (select.disabled || select.value !== "KD") return;
+        const prefix = select.name.split("__")[0];
+        if (prefix === "한국") return;
+        const row = select.closest("tr");
+        const material = row?.querySelector(`[name="${prefix}__unit_price_material"]`);
+        const domesticMaterial = row?.querySelector(`[name="한국__unit_price_material"]`);
+        if (!material || !domesticMaterial || material.disabled || material.value !== "") return;
+        material.value = domesticMaterial.value;
+        material.dispatchEvent(new Event("input", {bubbles: true}));
+    }
+    document.querySelectorAll('#grid-container select[name$="__sourcing_part"]').forEach((select) => { applyKdLocationLock(select); applyKdMaterialDefault(select); });
+    document.body.addEventListener("htmx:afterSwap", (event) => {
+        event.target.querySelectorAll('select[name$="__sourcing_part"]').forEach((select) => { applyKdLocationLock(select); applyKdMaterialDefault(select); });
+    });
+
+    document.addEventListener("input", (event) => {
+        if (event.target.matches(".country-search")) {
+            const keyword = event.target.value.trim().toLowerCase();
+            event.target.nextElementSibling?.querySelectorAll(".country-option").forEach((label) => {
+                label.style.display = label.textContent.toLowerCase().includes(keyword) ? "" : "none";
+            });
+        }
+    });
+
+    document.addEventListener("change", (event) => {
+        if (event.target.id === "select-all") {
+            document.querySelectorAll("#grid-container .row-select:not(:disabled)").forEach((box) => { box.checked = event.target.checked; });
+            return;
+        }
+        if (event.target.matches('select[name$="__sourcing_part"]')) { applyKdLocationLock(event.target); applyKdMaterialDefault(event.target); }
+        const field = event.target.closest(".row-autosave");
+        if (field) { field.closest("tr[data-save-url]").dataset.dirty = "true"; field.classList.add("cell-dirty"); field.classList.remove("cell-error"); }
+    });
+
+    document.addEventListener("click", (event) => {
+        const bulkApply = event.target.closest("#bulk-apply-btn");
+        const bulkSave = event.target.closest("#bulk-save-btn");
+        if (bulkApply || bulkSave) {
+            event.preventDefault();
+            const rows = [...document.querySelectorAll("#grid-container tr[data-save-url]")].filter((row) => row.querySelector(".row-select")?.checked);
+            if (!rows.length) { showSaveMessage("적용할 행을 먼저 선택해 주세요.", true); return; }
+            if (bulkApply) {
+                const country = document.getElementById("bulk-country")?.value;
+                const field = document.getElementById("bulk-field")?.value;
+                const value = document.getElementById("bulk-value")?.value;
+                if (value === "") { showSaveMessage("일괄 적용할 값을 입력해 주세요.", true); return; }
+                let appliedRows = 0;
+                rows.forEach((row) => {
+                    const selector = country === "all" ? `[name$="__${field}"]` : `[name="${country}__${field}"]`;
+                    const inputs = [...row.querySelectorAll(selector)].filter((input) => !input.disabled && !(country === "all" && input.name.startsWith("한국__")));
+                    if (!inputs.length) return;
+                    inputs.forEach((input) => {
+                        input.value = value;
+                        input.dispatchEvent(new Event("input", {bubbles: true}));
+                    });
+                    appliedRows += 1;
+                });
+                if (!appliedRows) {
+                    showSaveMessage("선택한 행에 적용할 수 있는 항목이 없습니다. 담당 품목 저장 여부와 국가/항목 선택을 확인해 주세요.", true);
+                } else {
+                    showSaveMessage(`${appliedRows}개 행에 값을 적용했습니다. 임시 저장을 눌러 반영하세요.`);
+                }
+            } else {
+                Promise.all(rows.map((row) => saveRow(row))).then(() => showSaveMessage(`${rows.length}개 행을 저장했습니다.`));
+            }
+            return;
+        }
+    });
+    document.addEventListener("input", (event) => {
+        const field = event.target.closest(".row-autosave");
+        if (field) { field.closest("tr[data-save-url]").dataset.dirty = "true"; field.classList.add("cell-dirty"); field.classList.remove("cell-error"); }
+    });
+    window.saveDirtyBomRows = async () => {
+        const rows = [...document.querySelectorAll("#grid-container tr[data-save-url][data-dirty='true']")];
+        if (!rows.length) { showSaveMessage("변경된 입력값이 없습니다."); return; }
+        await Promise.all(rows.map(async (row) => { await saveRow(row); delete row.dataset.dirty; }));
+        showSaveMessage(`${rows.length}개 행을 임시 저장했습니다.`);
+    };
+})();
+</script>
+</body>
+</html>
