@@ -110,6 +110,7 @@ def init_db(conn):
             ("sourcing_assembly_location", "TEXT"),
             ("special_fx_rate", "TEXT"),
             ("special_fx_reason", "TEXT"),
+            ("note", "TEXT"),
         ):
             try:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
@@ -954,7 +955,7 @@ def list_vehicles(conn, bom_id=None):
 def upsert_purchase(conn, part_no, row_num, country, fields, updated_by=None, bom_id=None):
     bom_id = _resolve_bom_id(conn, bom_id)
     previous = get_purchase(conn, part_no, row_num, country, bom_id)
-    extra_fields = ["sourcing_part_location", "sourcing_assembly_location", "special_fx_rate", "special_fx_reason"]
+    extra_fields = ["sourcing_part_location", "sourcing_assembly_location", "special_fx_rate", "special_fx_reason", "note"]
     columns = ["bom_id", "part_no", "row_num", "country"] + [n for n, _ in PURCHASE_FIELDS] + extra_fields + ["updated_at", "updated_by"]
     values = ([bom_id, part_no, row_num, country] + [fields.get(n) for n, _ in PURCHASE_FIELDS] + [fields.get(n) for n in extra_fields]
               + [datetime.datetime.now().isoformat(timespec="minutes"), updated_by])
@@ -1004,7 +1005,7 @@ def get_user_purchase(conn, part_no, row_num, country, user_id, bom_id=None):
 
 def upsert_user_purchase(conn, part_no, row_num, country, user_id, fields, updated_by=None, bom_id=None):
     bom_id = _resolve_bom_id(conn, bom_id)
-    extra_fields = ["sourcing_part_location", "sourcing_assembly_location", "special_fx_rate", "special_fx_reason"]
+    extra_fields = ["sourcing_part_location", "sourcing_assembly_location", "special_fx_rate", "special_fx_reason", "note"]
     columns = ["bom_id", "user_id", "part_no", "row_num", "country"] + [n for n, _ in PURCHASE_FIELDS] + extra_fields + ["updated_at", "updated_by"]
     values = [bom_id, user_id, part_no, row_num, country] + [fields.get(n) for n, _ in PURCHASE_FIELDS] + [fields.get(n) for n in extra_fields] + [datetime.datetime.now().isoformat(timespec="minutes"), updated_by]
     updates = ", ".join(f"{c}=excluded.{c}" for c in columns if c not in ("bom_id", "user_id", "part_no", "row_num", "country"))

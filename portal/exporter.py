@@ -58,6 +58,10 @@ def export_to_template(conn, template_path):
         country_columns[country] = next_dynamic_column
         next_dynamic_column += COUNTRY_BLOCK_WIDTH
 
+    note_column = ws.max_column + 1
+    ws.cell(row=3, column=note_column, value="특이사항")
+    ws.column_dimensions[openpyxl.utils.get_column_letter(note_column)].width = 20
+
     parts = db.list_parts(conn)
     # Manual portal rows do not exist in the source workbook. Insert a row at
     # the recorded BOM position and clone the next row's style before writing.
@@ -97,6 +101,8 @@ def export_to_template(conn, template_path):
                 if value is not None:
                     col = country_columns[country] + next(offset for field, offset in PURCHASE_FIELDS if field == name)
                     ws.cell(row=row_num, column=col, value=value)
+            if country == "한국" and purchase.get("note"):
+                ws.cell(row=row_num, column=note_column, value=purchase.get("note"))
 
     out = BytesIO()
     wb.save(out)
