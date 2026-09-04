@@ -4,7 +4,7 @@ from flask import Blueprint, render_template, request, current_app, jsonify, red
 from flask_login import login_required, current_user
 import db
 import calc
-from columns import COUNTRIES, DESIGN_FIELDS
+from columns import COUNTRIES, DESIGN_FIELDS, DESIGN_FIELD_LABELS
 
 bom_bp = Blueprint("bom", __name__, url_prefix="/bom")
 
@@ -48,13 +48,14 @@ def _build_row_view(part, purchase):
     # source value itself is not meaningful in the portal; a dot preserves
     # hierarchy without showing the old numeric "1" marker.
     row["level_slots"] = ["●" if index == row["level_depth"] else "" for index in range(7)]
-    row["detail"] = {name: part.get(name) or "" for name, _ in DESIGN_FIELDS if name not in ("part_no", "part_name")}
+    row["detail"] = {name: part.get(name) or "" for name, _ in DESIGN_FIELDS if name not in ("part_no", "part_name", "vehicle", "category", "qty")}
     row["sourcing_part"] = purchase.get("sourcing_part") or ""
     row["sourcing_assembly"] = purchase.get("sourcing_assembly") or ""
     row["sourcing_part_location"] = purchase.get("sourcing_part_location") or ""
     row["sourcing_assembly_location"] = purchase.get("sourcing_assembly_location") or ""
     row["special_fx_rate"] = purchase.get("special_fx_rate") or ""
     row["special_fx_reason"] = purchase.get("special_fx_reason") or ""
+    row["note"] = purchase.get("note") or ""
     return row
 
 def _filtered_rows(conn, countries, status, search, categories=None, user_id=None, assigned_only=False):
@@ -204,6 +205,7 @@ def grid():
         countries=overseas_countries,
         sourcing_countries=["KD", "LP", "MIP"],
         assembly_sourcing_options=["KD", "LP", "MIP"],
+        design_field_labels=DESIGN_FIELD_LABELS,
         selected_countries=selected_countries,
         can_manage_countries=current_user.role == "admin",
         is_admin=current_user.role == "admin",
@@ -278,7 +280,7 @@ def save_row(row_num, country, part_no=None):
     if group and current_user.role != "admin" and group["owner_user_id"] != int(current_user.id):
         conn.close()
         return jsonify({"error": "그룹 담당자만 상위 품목의 재료비를 입력할 수 있습니다."}), 403
-    editable_fields = ("currency", "unit_price_material", "unit_price_logistics", "tariff_rate", "mold_cost", "sourcing_part", "sourcing_assembly", "sourcing_part_location", "sourcing_assembly_location", "special_fx_rate", "special_fx_reason")
+    editable_fields = ("currency", "unit_price_material", "unit_price_logistics", "tariff_rate", "mold_cost", "sourcing_part", "sourcing_assembly", "sourcing_part_location", "sourcing_assembly_location", "special_fx_rate", "special_fx_reason", "note")
     target_countries = request.form.getlist("target_country")
     if not target_countries:
         target_countries = [name.split("__", 1)[0] for name in request.form if "__" in name]

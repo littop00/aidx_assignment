@@ -518,8 +518,29 @@ tr.row-highlight td { animation:row-highlight-flash 1.6s ease; }
     background: #fff;
 }
 
-.level-cell, .level-header { min-width: 34px; width: 34px; text-align: center; }
-.part-name-cell { min-width: 210px; }
+.level-cell, .level-header { min-width: 34px; width: 34px; text-align: center; border-left: 1px solid var(--portal-border); border-right: 1px solid var(--portal-border); }
+.part-name-cell { width: 210px; min-width: 210px; }
+
+/* 좌측 틀고정: 체크박스~품명 (스크롤해도 계속 보임) */
+.bom-table thead tr:first-child th:nth-child(1) { position: sticky; left: 0; width: 40px; z-index: 55; }
+.bom-table thead tr:last-child th:nth-child(1), .bom-table tbody tr[data-save-url] td:nth-child(1) { position: sticky; left: 0; width: 40px; }
+.bom-table thead tr:last-child th:nth-child(2), .bom-table tbody tr[data-save-url] td:nth-child(2) { position: sticky; left: 40px; width: 80px; }
+.bom-table thead tr:last-child th:nth-child(3), .bom-table tbody tr[data-save-url] td:nth-child(3) { position: sticky; left: 120px; width: 80px; }
+.bom-table thead tr:last-child th:nth-child(4), .bom-table tbody tr[data-save-url] td:nth-child(4) { position: sticky; left: 200px; width: 110px; }
+.bom-table thead tr:last-child th:nth-child(5), .bom-table tbody tr[data-save-url] td:nth-child(5) { position: sticky; left: 310px; }
+.bom-table thead tr:last-child th:nth-child(6), .bom-table tbody tr[data-save-url] td:nth-child(6) { position: sticky; left: 344px; }
+.bom-table thead tr:last-child th:nth-child(7), .bom-table tbody tr[data-save-url] td:nth-child(7) { position: sticky; left: 378px; }
+.bom-table thead tr:last-child th:nth-child(8), .bom-table tbody tr[data-save-url] td:nth-child(8) { position: sticky; left: 412px; }
+.bom-table thead tr:last-child th:nth-child(9), .bom-table tbody tr[data-save-url] td:nth-child(9) { position: sticky; left: 446px; }
+.bom-table thead tr:last-child th:nth-child(10), .bom-table tbody tr[data-save-url] td:nth-child(10) { position: sticky; left: 480px; }
+.bom-table thead tr:last-child th:nth-child(11), .bom-table tbody tr[data-save-url] td:nth-child(11) { position: sticky; left: 514px; }
+.bom-table thead tr:last-child th:nth-child(12), .bom-table tbody tr[data-save-url] td:nth-child(12) {
+    position: sticky; left: 548px; width: 210px;
+    box-shadow: 4px 0 6px -4px rgba(0, 0, 0, .25);
+}
+.bom-table thead tr:last-child th:nth-child(-n+12) { z-index: 55; }
+.bom-table tbody tr[data-save-url] td:nth-child(-n+12) { z-index: 5; background: #fff; }
+.bom-table tbody tr[data-save-url] td.part-name-cell { overflow: hidden; text-overflow: ellipsis; }
 .bom-table th small { font-size: .66rem; font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--portal-muted); }
 
 .bom-table input:not([type="checkbox"]), .bom-table select {
