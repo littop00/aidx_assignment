@@ -101,6 +101,7 @@
       <p class="text-xs font-medium text-[#A3AED0]">Pages / {{ request.endpoint.split('.')[-1] | capitalize if request.endpoint else 'Dashboard' }}</p>
       <h1 class="text-2xl font-extrabold tracking-tight text-[#1B2559] mt-0.5">{% block page_title %}Main Dashboard{% endblock %}</h1>
     </div>
+    <div id="fx-widget" hx-get="{{ url_for('fx.widget') }}" hx-trigger="load"></div>
   </header>
 
   <main class="flex-1 p-6 md:p-10 pt-0 overflow-y-auto">
@@ -131,6 +132,45 @@
     function formatAmount(value) {
         return new Intl.NumberFormat("ko-KR", {maximumFractionDigits: 0}).format(Number(value || 0));
     }
+
+    function formatComma(value) {
+        if (value === null || value === undefined || value === "") return "";
+        const str = String(value).replace(/,/g, "");
+        if (str === "" || str === "-" || isNaN(Number(str))) return String(value);
+        const [intPart, decPart] = str.split(".");
+        const withCommas = Number(intPart).toLocaleString("ko-KR");
+        return decPart !== undefined ? `${withCommas}.${decPart}` : withCommas;
+    }
+    function unformatComma(value) {
+        return (value === null || value === undefined) ? "" : String(value).replace(/,/g, "");
+    }
+    window.formatComma = formatComma;
+    window.unformatComma = unformatComma;
+
+    function formatCommaInputs(root) {
+        (root || document).querySelectorAll(".number-comma").forEach((el) => { el.value = formatComma(el.value); });
+    }
+    document.addEventListener("input", (event) => {
+        const el = event.target;
+        if (!el.matches(".number-comma")) return;
+        const raw = el.value;
+        const cursorPos = el.selectionStart ?? raw.length;
+        const rawDigitsBeforeCursor = raw.slice(0, cursorPos).replace(/,/g, "").length;
+        const formatted = formatComma(unformatComma(raw));
+        if (formatted === raw) return;
+        el.value = formatted;
+        let count = 0, newPos = formatted.length;
+        for (let i = 0; i < formatted.length; i++) {
+            if (formatted[i] !== ",") count++;
+            if (count >= rawDigitsBeforeCursor) { newPos = i + 1; break; }
+        }
+        el.setSelectionRange(newPos, newPos);
+    });
+    document.addEventListener("focusout", (event) => {
+        if (event.target.matches(".number-comma")) event.target.value = formatComma(event.target.value);
+    });
+    formatCommaInputs();
+    document.body.addEventListener("htmx:afterSwap", (event) => { formatCommaInputs(event.target); });
 
     function updateSavedRow(row, payload) {
         if (payload.countries) {
@@ -215,7 +255,7 @@
         const button = row.querySelector(".save-row-btn");
         const dirtyFields = [...row.querySelectorAll(".row-autosave.cell-dirty")];
         const data = new URLSearchParams();
-        row.querySelectorAll("[name]").forEach((field) => data.append(field.name, field.value));
+        row.querySelectorAll("[name]").forEach((field) => data.append(field.name, field.classList.contains("number-comma") ? unformatComma(field.value) : field.value));
         try {
             const response = await fetch(row.dataset.saveUrl, {
                 method: "POST",
@@ -281,7 +321,7 @@
 
     document.addEventListener("change", (event) => {
         if (event.target.id === "select-all") {
-            document.querySelectorAll("#grid-container .row-select:not(:disabled)").forEach((box) => { box.checked = event.target.checked; });
+            document.querySelectorAll("#grid-container .row-select:not(:disabled), #grid-container .assignment-toggle:not(:disabled)").forEach((box) => { box.checked = event.target.checked; });
             return;
         }
         if (event.target.matches('select[name$="__sourcing_part"]')) { applyKdLocationLock(event.target); applyKdMaterialDefault(event.target); }
@@ -294,7 +334,7 @@
         const bulkSave = event.target.closest("#bulk-save-btn");
         if (bulkApply || bulkSave) {
             event.preventDefault();
-            const rows = [...document.querySelectorAll("#grid-container tr[data-save-url]")].filter((row) => row.querySelector(".row-select")?.checked);
+            const rows = [...document.querySelectorAll("#grid-container tr[data-save-url]")].filter((row) => row.querySelector(".row-select, .assignment-toggle")?.checked);
             if (!rows.length) { showSaveMessage("적용할 행을 먼저 선택해 주세요.", true); return; }
             if (bulkApply) {
                 const country = document.getElementById("bulk-country")?.value;
@@ -307,7 +347,7 @@
                     const inputs = [...row.querySelectorAll(selector)].filter((input) => !input.disabled && !(country === "all" && input.name.startsWith("한국__")));
                     if (!inputs.length) return;
                     inputs.forEach((input) => {
-                        input.value = value;
+                        input.value = input.classList.contains("number-comma") ? formatComma(value) : value;
                         input.dispatchEvent(new Event("input", {bubbles: true}));
                     });
                     appliedRows += 1;
