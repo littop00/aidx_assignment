@@ -3,6 +3,8 @@ import datetime
 import json
 import sqlite3
 from columns import DESIGN_FIELDS, PURCHASE_FIELDS
+from categories import major_of, group_of
+import logistics
 
 def get_connection(db_path):
     conn = sqlite3.connect(db_path)
@@ -30,7 +32,7 @@ def init_db(conn):
             published_at TEXT
         )
     """)
-    for column, definition in (("is_withdrawn", "INTEGER NOT NULL DEFAULT 0"), ("withdrawn_at", "TEXT"), ("withdrawal_reason", "TEXT")):
+    for column, definition in (("is_withdrawn", "INTEGER NOT NULL DEFAULT 0"), ("withdrawn_at", "TEXT"), ("withdrawal_reason", "TEXT"), ("is_confirmed", "INTEGER NOT NULL DEFAULT 0"), ("confirmed_at", "TEXT"), ("due_date", "TEXT")):
         try:
             conn.execute(f"ALTER TABLE bom_versions ADD COLUMN {column} {definition}")
         except sqlite3.OperationalError:
@@ -75,6 +77,10 @@ def init_db(conn):
         conn.execute("ALTER TABLE bom_parts ADD COLUMN manual_row INTEGER NOT NULL DEFAULT 0")
     except sqlite3.OperationalError:
         pass
+    try:
+        conn.execute("ALTER TABLE bom_parts ADD COLUMN sub_category TEXT")
+    except sqlite3.OperationalError:
+        pass
     conn.execute(f"""
         CREATE TABLE IF NOT EXISTS bom_purchase_data (
             bom_id INTEGER NOT NULL,
@@ -104,6 +110,7 @@ def init_db(conn):
             ("sourcing_assembly_location", "TEXT"),
             ("special_fx_rate", "TEXT"),
             ("special_fx_reason", "TEXT"),
+            ("note", "TEXT"),
         ):
             try:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
@@ -118,6 +125,17 @@ def init_db(conn):
             assigned_at TEXT NOT NULL,
             PRIMARY KEY (bom_id, user_id, part_no, row_num),
             FOREIGN KEY (bom_id, part_no, row_num) REFERENCES bom_parts(bom_id, part_no, row_num),
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS bom_category_members (
+            bom_id INTEGER NOT NULL,
+            category TEXT NOT NULL,
+            user_id INTEGER NOT NULL,
+            joined_at TEXT NOT NULL,
+            PRIMARY KEY (bom_id, category, user_id),
+            FOREIGN KEY (bom_id) REFERENCES bom_versions(id),
             FOREIGN KEY (user_id) REFERENCES users(id)
         )
     """)
@@ -214,6 +232,33 @@ def init_db(conn):
         conn.execute("ALTER TABLE bom_submissions ADD COLUMN snapshot_json TEXT")
     except Exception:
         pass
+    submissions_schema = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='bom_submissions'").fetchone()
+    if submissions_schema and "auto_submitted" not in submissions_schema["sql"]:
+        conn.execute("PRAGMA foreign_keys = OFF")
+        conn.execute("ALTER TABLE bom_submissions RENAME TO bom_submissions_old")
+        conn.execute("""
+            CREATE TABLE bom_submissions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                bom_version_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                status TEXT NOT NULL CHECK(status IN ('draft', 'submitted', 'returned', 'approved', 'auto_submitted')) DEFAULT 'draft',
+                submitted_at TEXT,
+                reviewed_at TEXT,
+                reviewed_by TEXT,
+                review_comment TEXT,
+                snapshot_json TEXT,
+                UNIQUE (bom_version_id, user_id),
+                FOREIGN KEY (bom_version_id) REFERENCES bom_versions(id),
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+        """)
+        conn.execute("""
+            INSERT INTO bom_submissions (id, bom_version_id, user_id, status, submitted_at, reviewed_at, reviewed_by, review_comment, snapshot_json)
+            SELECT id, bom_version_id, user_id, status, submitted_at, reviewed_at, reviewed_by, review_comment, snapshot_json FROM bom_submissions_old
+        """)
+        conn.execute("DROP TABLE bom_submissions_old")
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.commit()
     conn.execute("""
         CREATE TABLE IF NOT EXISTS bom_version_countries (
             bom_version_id INTEGER NOT NULL,
@@ -245,6 +290,67 @@ def init_db(conn):
             submitted_at TEXT NOT NULL,
             UNIQUE(submission_id, revision_no),
             FOREIGN KEY(submission_id) REFERENCES bom_submissions(id)
+        )
+    """)
+    revisions_schema = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='submission_revisions'").fetchone()
+    if revisions_schema and "bom_submissions_old" in revisions_schema["sql"]:
+        conn.execute("PRAGMA foreign_keys = OFF")
+        conn.execute("ALTER TABLE submission_revisions RENAME TO submission_revisions_old")
+        conn.execute("""
+            CREATE TABLE submission_revisions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                submission_id INTEGER NOT NULL,
+                revision_no INTEGER NOT NULL,
+                snapshot_json TEXT NOT NULL,
+                submitted_at TEXT NOT NULL,
+                UNIQUE(submission_id, revision_no),
+                FOREIGN KEY(submission_id) REFERENCES bom_submissions(id)
+            )
+        """)
+        conn.execute("""
+            INSERT INTO submission_revisions (id, submission_id, revision_no, snapshot_json, submitted_at)
+            SELECT id, submission_id, revision_no, snapshot_json, submitted_at FROM submission_revisions_old
+            WHERE submission_id IN (SELECT id FROM bom_submissions)
+        """)
+        conn.execute("DROP TABLE submission_revisions_old")
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.commit()
+    # Older dev DBs may already have the pre-simplification 10-field rate
+    # tables; drop them so the CREATE TABLE below picks up the new schema.
+    for legacy_table in ("logistics_rates", "bom_logistics_rate_snapshot"):
+        cols = conn.execute(f"PRAGMA table_info({legacy_table})").fetchall()
+        if cols and not any(col["name"] == "container_freight" for col in cols):
+            conn.execute(f"DROP TABLE {legacy_table}")
+    conn.execute("DROP TABLE IF EXISTS bom_logistics_volume")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS logistics_rates (
+            country TEXT NOT NULL,
+            effective_date TEXT NOT NULL,
+            container_freight REAL NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (country, effective_date)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS bom_logistics_settings (
+            bom_id INTEGER PRIMARY KEY,
+            box_width REAL,
+            box_depth REAL,
+            box_height REAL,
+            boxes_per_container REAL,
+            container_weight_limit_kg REAL,
+            export_packaging_cost REAL,
+            FOREIGN KEY (bom_id) REFERENCES bom_versions(id)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS bom_logistics_rate_snapshot (
+            bom_id INTEGER NOT NULL,
+            country TEXT NOT NULL,
+            container_freight REAL NOT NULL DEFAULT 0,
+            captured_at TEXT NOT NULL,
+            PRIMARY KEY (bom_id, country),
+            FOREIGN KEY (bom_id) REFERENCES bom_versions(id)
         )
     """)
     registered_countries = [
@@ -344,10 +450,54 @@ def migrate_matching_user_work(conn, from_bom_id, to_bom_id):
     conn.commit()
     return len(pairs)
 
+def get_logistics_settings(conn, bom_id):
+    row = conn.execute("SELECT * FROM bom_logistics_settings WHERE bom_id=?", (bom_id,)).fetchone()
+    return dict(row) if row else None
+
+def set_logistics_settings(conn, bom_id, fields):
+    columns = ["box_width", "box_depth", "box_height", "boxes_per_container", "container_weight_limit_kg", "export_packaging_cost"]
+    values = [fields.get(name) or None for name in columns]
+    conn.execute(
+        "INSERT INTO bom_logistics_settings (bom_id, " + ", ".join(columns) + ") VALUES (?, " + ", ".join(["?"] * len(columns)) + ") "
+        "ON CONFLICT(bom_id) DO UPDATE SET " + ", ".join(f"{name}=excluded.{name}" for name in columns),
+        [bom_id] + values,
+    )
+    conn.commit()
+
+def get_logistics_snapshot(conn, bom_id, country):
+    row = conn.execute("SELECT * FROM bom_logistics_rate_snapshot WHERE bom_id=? AND country=?", (bom_id, country)).fetchone()
+    return dict(row) if row else None
+
+def get_container_freight(conn, bom_id, country):
+    version = get_bom_version(conn, bom_id)
+    if version and version["status"] == "published":
+        snapshot = get_logistics_snapshot(conn, bom_id, country)
+        if snapshot:
+            return snapshot.get("container_freight")
+    rate = logistics.get_latest_rate(conn, country)
+    return rate.get("container_freight") if rate else None
+
+def capture_logistics_snapshot(conn, bom_id):
+    now = datetime.datetime.now().isoformat(timespec="seconds")
+    countries = [c for c in list_bom_countries(conn, bom_id) if c != "한국"]
+    for country in countries:
+        rate = logistics.get_latest_rate(conn, country)
+        if not rate:
+            continue
+        columns = logistics.RATE_FIELDS
+        conn.execute(
+            "INSERT INTO bom_logistics_rate_snapshot (bom_id, country, " + ", ".join(columns) + ", captured_at) "
+            "VALUES (?, ?, " + ", ".join(["?"] * len(columns)) + ", ?) "
+            "ON CONFLICT(bom_id, country) DO UPDATE SET " + ", ".join(f"{name}=excluded.{name}" for name in columns) + ", captured_at=excluded.captured_at",
+            [bom_id, country] + [rate.get(name) for name in columns] + [now],
+        )
+    conn.commit()
+
 def publish_bom_version(conn, bom_id):
     now = datetime.datetime.now().isoformat(timespec="seconds")
     conn.execute("UPDATE bom_versions SET status = 'archived' WHERE status = 'published'")
     conn.execute("UPDATE bom_versions SET status = 'published', published_at = ?, is_withdrawn = 0, withdrawn_at = NULL, withdrawal_reason = NULL WHERE id = ? AND status = 'draft'", (now, bom_id))
+    capture_logistics_snapshot(conn, bom_id)
     version = get_bom_version(conn, bom_id)
     users = conn.execute("SELECT id FROM users WHERE role = 'user'").fetchall()
     conn.executemany("INSERT INTO notifications (user_id, title, message, kind, link, created_at) VALUES (?, ?, ?, 'release', '/bom/', ?)", [(row['id'], 'New BOM released', f"{version['name']} (Rev.{version['version_no']}) is ready for input.", now) for row in users])
@@ -379,6 +529,14 @@ def unread_notification_count(conn, user_id):
 
 def mark_notifications_read(conn, user_id):
     conn.execute("UPDATE notifications SET is_read=1 WHERE user_id=?", (user_id,))
+    conn.commit()
+
+def notify_admins(conn, title, message, kind="info", link=None):
+    admin_ids = [row["id"] for row in conn.execute("SELECT id FROM users WHERE role='admin'").fetchall()]
+    conn.executemany(
+        "INSERT INTO notifications (user_id, title, message, kind, link, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        [(admin_id, title, message, kind, link, datetime.datetime.now().isoformat(timespec="seconds")) for admin_id in admin_ids],
+    )
     conn.commit()
 
 def submission_progress(conn, bom_id, user_id=None):
@@ -443,12 +601,14 @@ def get_submission(conn, submission_id):
 def save_submission_snapshot(conn, bom_version_id, user_id):
     countries = list_bom_countries(conn, bom_version_id)
     parts = list_assigned_parts(conn, bom_version_id, user_id)
+    extra_fields = ["sourcing_part_location", "sourcing_assembly_location", "special_fx_rate", "special_fx_reason"]
     rows = []
     for part in parts:
         values = {}
         for country in countries:
             purchase = get_user_purchase(conn, part["part_no"], part["row_num"], country, user_id, bom_version_id) or {}
             values[country] = {name: purchase.get(name) for name, _ in PURCHASE_FIELDS}
+            values[country].update({name: purchase.get(name) for name in extra_fields})
         rows.append({
             "vehicle": part.get("vehicle"), "category": part.get("category"),
             "part_no": part.get("part_no"), "level_marker": part.get("level_marker"),
@@ -479,6 +639,22 @@ def bom_version_difference(conn, base_bom_id, compare_bom_id):
 def list_users(conn):
     return [dict(row) for row in conn.execute("SELECT id, username, role, created_at FROM users ORDER BY username").fetchall()]
 
+def count_admins(conn):
+    return conn.execute("SELECT COUNT(*) AS n FROM users WHERE role='admin'").fetchone()["n"]
+
+def update_user_role(conn, user_id, role):
+    conn.execute("UPDATE users SET role=? WHERE id=?", (role, user_id))
+    conn.commit()
+
+def delete_users(conn, user_ids):
+    if not user_ids:
+        return 0
+    placeholders = ",".join("?" for _ in user_ids)
+    conn.execute(f"DELETE FROM bom_category_members WHERE user_id IN ({placeholders})", user_ids)
+    cursor = conn.execute(f"DELETE FROM users WHERE id IN ({placeholders})", user_ids)
+    conn.commit()
+    return cursor.rowcount
+
 def get_or_create_submission(conn, bom_version_id, user_id):
     conn.execute(
         "INSERT OR IGNORE INTO bom_submissions (bom_version_id, user_id) VALUES (?, ?)",
@@ -498,6 +674,57 @@ def update_submission_status(conn, bom_version_id, user_id, status, reviewed_by=
     else:
         conn.execute("UPDATE bom_submissions SET status=? WHERE bom_version_id=? AND user_id=?", (status, bom_version_id, user_id))
     conn.commit()
+    if status == "approved":
+        try_confirm_bom_version(conn, bom_version_id)
+    elif status == "returned":
+        conn.execute("UPDATE bom_versions SET is_confirmed=0, confirmed_at=NULL WHERE id=?", (bom_version_id,))
+        conn.commit()
+
+def set_bom_due_date(conn, bom_id, due_date):
+    conn.execute("UPDATE bom_versions SET due_date=? WHERE id=?", (due_date or None, bom_id))
+    conn.commit()
+
+def enforce_due_dates(conn):
+    now = datetime.datetime.now().isoformat(timespec="seconds")
+    versions = conn.execute(
+        "SELECT * FROM bom_versions WHERE due_date IS NOT NULL AND due_date != '' AND due_date < ? AND status='published' AND COALESCE(is_withdrawn,0)=0",
+        (now,),
+    ).fetchall()
+    for version in versions:
+        bom_id = version["id"]
+        pending = conn.execute("SELECT user_id FROM bom_submissions WHERE bom_version_id=? AND status IN ('draft', 'returned')", (bom_id,)).fetchall()
+        for row in pending:
+            user_id = row["user_id"]
+            save_submission_snapshot(conn, bom_id, user_id)
+            conn.execute(
+                "UPDATE bom_submissions SET status='auto_submitted', submitted_at=?, review_comment=NULL WHERE bom_version_id=? AND user_id=?",
+                (now, bom_id, user_id),
+            )
+            conn.execute(
+                "INSERT INTO notifications (user_id, title, message, kind, link, created_at) VALUES (?, ?, ?, 'warning', '/bom/', ?)",
+                (user_id, "BOM 자동 제출", f"{version['name']}의 마감기한이 지나 입력 내용이 자동 제출되었습니다.", now),
+            )
+        if pending:
+            notify_admins(conn, "BOM 자동 제출 발생", f"{version['name']}의 마감기한 경과로 {len(pending)}명의 입력이 자동 제출되었습니다.", kind="warning", link="/admin/reviews")
+    conn.commit()
+
+def try_confirm_bom_version(conn, bom_version_id):
+    submissions = conn.execute("SELECT status FROM bom_submissions WHERE bom_version_id=?", (bom_version_id,)).fetchall()
+    if not submissions or any(row["status"] != "approved" for row in submissions):
+        return False
+    version = get_bom_version(conn, bom_version_id)
+    if not version or version["is_confirmed"]:
+        return False
+    now = datetime.datetime.now().isoformat(timespec="seconds")
+    conn.execute("UPDATE bom_versions SET is_confirmed=1, confirmed_at=? WHERE id=?", (now, bom_version_id))
+    user_ids = [row["id"] for row in conn.execute("SELECT id FROM users").fetchall()]
+    message = f"{version['name']} (Rev.{version['version_no']})의 모든 사용자 제출이 승인되어 확정되었습니다."
+    conn.executemany(
+        "INSERT INTO notifications (user_id, title, message, kind, link, created_at) VALUES (?, ?, ?, 'info', '/bom/', ?)",
+        [(user_id, "BOM 확정", message, now) for user_id in user_ids],
+    )
+    conn.commit()
+    return True
 
 def save_latest_bom_upload(conn, file_name, uploaded_by, inserted_count, updated_count):
     conn.execute(
@@ -574,9 +801,11 @@ def list_assigned_parts(conn, bom_id, user_id):
                     WHERE a.bom_id=p.bom_id AND a.user_id=? AND a.part_no=p.part_no AND a.row_num=p.row_num)
             OR EXISTS (SELECT 1 FROM bom_user_purchase_data u
                        WHERE u.bom_id=p.bom_id AND u.user_id=? AND u.part_no=p.part_no AND u.row_num=p.row_num)
+            OR EXISTS (SELECT 1 FROM bom_category_members m
+                       WHERE m.bom_id=p.bom_id AND m.user_id=? AND m.category=p.category)
         )
         ORDER BY p.row_num
-    """, (bom_id, user_id, user_id)).fetchall()
+    """, (bom_id, user_id, user_id, user_id)).fetchall()
     return [dict(r) for r in rows]
 
 def list_current_assignments(conn, bom_id, user_id):
@@ -593,7 +822,11 @@ def assigned_part_keys(conn, bom_id, user_id):
         SELECT part_no, row_num FROM bom_part_assignments WHERE bom_id=? AND user_id=?
         UNION
         SELECT part_no, row_num FROM bom_user_purchase_data WHERE bom_id=? AND user_id=?
-    """, (bom_id, user_id, bom_id, user_id)).fetchall()
+        UNION
+        SELECT p.part_no, p.row_num FROM bom_parts p
+        JOIN bom_category_members m ON m.bom_id=p.bom_id AND m.category=p.category
+        WHERE p.bom_id=? AND m.user_id=?
+    """, (bom_id, user_id, bom_id, user_id, bom_id, user_id)).fetchall()
     return {(row["part_no"], row["row_num"]) for row in rows}
 
 def set_part_assignment(conn, bom_id, user_id, part_no, row_num, assigned):
@@ -608,6 +841,47 @@ def set_part_assignment(conn, bom_id, user_id, part_no, row_num, assigned):
             (bom_id, user_id, part_no, row_num),
         )
     conn.commit()
+
+def list_categories(conn, bom_id):
+    rows = conn.execute("SELECT DISTINCT category FROM bom_parts WHERE bom_id=? AND category IS NOT NULL AND category != '' ORDER BY category", (bom_id,)).fetchall()
+    return [row["category"] for row in rows]
+
+def list_category_members(conn, bom_id):
+    rows = conn.execute("""
+        SELECT m.category, u.id AS user_id, u.username FROM bom_category_members m
+        JOIN users u ON u.id = m.user_id
+        WHERE m.bom_id=? ORDER BY m.category, u.username
+    """, (bom_id,)).fetchall()
+    members = {}
+    for row in rows:
+        members.setdefault(row["category"], []).append({"id": row["user_id"], "username": row["username"]})
+    return members
+
+def get_user_categories(conn, bom_id, user_id):
+    rows = conn.execute("SELECT category FROM bom_category_members WHERE bom_id=? AND user_id=?", (bom_id, user_id)).fetchall()
+    return {row["category"] for row in rows}
+
+def set_category_membership(conn, bom_id, user_id, category, member):
+    if member:
+        conn.execute(
+            "INSERT OR IGNORE INTO bom_category_members (bom_id, category, user_id, joined_at) VALUES (?, ?, ?, ?)",
+            (bom_id, category, user_id, datetime.datetime.now().isoformat(timespec="seconds")),
+        )
+    else:
+        conn.execute("DELETE FROM bom_category_members WHERE bom_id=? AND category=? AND user_id=?", (bom_id, category, user_id))
+    conn.commit()
+
+def category_owner(conn, bom_id, category):
+    """The user whose live input a manager sees/edits for a category on the admin grid."""
+    if not category:
+        return None
+    row = conn.execute("""
+        SELECT u.id, u.username FROM bom_category_members m
+        JOIN users u ON u.id = m.user_id
+        WHERE m.bom_id=? AND m.category=?
+        ORDER BY u.username LIMIT 1
+    """, (bom_id, category)).fetchone()
+    return dict(row) if row else None
 
 def group_for_part(conn, bom_id, part_no, row_num):
     row = conn.execute("""
@@ -655,7 +929,7 @@ def set_part_group(conn, bom_id, parent_part_no, parent_row_num, owner_user_id, 
     if len(descendants) < 2:
         raise ValueError("하위 품목이 있는 상위 품목만 그룹으로 지정할 수 있습니다.")
     conn.execute("INSERT OR REPLACE INTO bom_part_groups (bom_id,parent_part_no,parent_row_num,owner_user_id,created_at) VALUES (?,?,?,?,?)", (bom_id,parent_part_no,parent_row_num,owner_user_id,datetime.datetime.now().isoformat(timespec="seconds")))
-    conn.execute("INSERT OR IGNORE INTO bom_part_assignments (bom_id,user_id,part_no,row_num,assigned_at) VALUES (?,?,?,?,?)", (bom_id,owner_user_id,parent_part_no,parent_row_num,datetime.datetime.now().isoformat(timespec="seconds")))
+    conn.executemany("INSERT OR IGNORE INTO bom_part_assignments (bom_id,user_id,part_no,row_num,assigned_at) VALUES (?,?,?,?,?)", [(bom_id,owner_user_id,p["part_no"],p["row_num"],datetime.datetime.now().isoformat(timespec="seconds")) for p in descendants])
     conn.execute("DELETE FROM bom_part_group_members WHERE bom_id=? AND parent_part_no=? AND parent_row_num=?", (bom_id,parent_part_no,parent_row_num))
     conn.executemany("INSERT OR REPLACE INTO bom_part_group_members (bom_id,parent_part_no,parent_row_num,part_no,row_num) VALUES (?,?,?,?,?)", [(bom_id,parent_part_no,parent_row_num,p["part_no"],p["row_num"]) for p in descendants])
     conn.commit()
@@ -663,6 +937,12 @@ def set_part_group(conn, bom_id, parent_part_no, parent_row_num, owner_user_id, 
 def reset_user_bom_work(conn, bom_id, user_id):
     conn.execute("DELETE FROM bom_part_assignments WHERE bom_id=? AND user_id=?", (bom_id, user_id))
     conn.execute("DELETE FROM bom_user_purchase_data WHERE bom_id=? AND user_id=?", (bom_id, user_id))
+    conn.execute("""
+        DELETE FROM bom_part_group_members WHERE bom_id=? AND (parent_part_no, parent_row_num) IN (
+            SELECT parent_part_no, parent_row_num FROM bom_part_groups WHERE bom_id=? AND owner_user_id=?
+        )
+    """, (bom_id, bom_id, user_id))
+    conn.execute("DELETE FROM bom_part_groups WHERE bom_id=? AND owner_user_id=?", (bom_id, user_id))
     conn.commit()
 
 def list_vehicles(conn, bom_id=None):
@@ -675,7 +955,7 @@ def list_vehicles(conn, bom_id=None):
 def upsert_purchase(conn, part_no, row_num, country, fields, updated_by=None, bom_id=None):
     bom_id = _resolve_bom_id(conn, bom_id)
     previous = get_purchase(conn, part_no, row_num, country, bom_id)
-    extra_fields = ["sourcing_part_location", "sourcing_assembly_location", "special_fx_rate", "special_fx_reason"]
+    extra_fields = ["sourcing_part_location", "sourcing_assembly_location", "special_fx_rate", "special_fx_reason", "note"]
     columns = ["bom_id", "part_no", "row_num", "country"] + [n for n, _ in PURCHASE_FIELDS] + extra_fields + ["updated_at", "updated_by"]
     values = ([bom_id, part_no, row_num, country] + [fields.get(n) for n, _ in PURCHASE_FIELDS] + [fields.get(n) for n in extra_fields]
               + [datetime.datetime.now().isoformat(timespec="minutes"), updated_by])
@@ -725,7 +1005,7 @@ def get_user_purchase(conn, part_no, row_num, country, user_id, bom_id=None):
 
 def upsert_user_purchase(conn, part_no, row_num, country, user_id, fields, updated_by=None, bom_id=None):
     bom_id = _resolve_bom_id(conn, bom_id)
-    extra_fields = ["sourcing_part_location", "sourcing_assembly_location", "special_fx_rate", "special_fx_reason"]
+    extra_fields = ["sourcing_part_location", "sourcing_assembly_location", "special_fx_rate", "special_fx_reason", "note"]
     columns = ["bom_id", "user_id", "part_no", "row_num", "country"] + [n for n, _ in PURCHASE_FIELDS] + extra_fields + ["updated_at", "updated_by"]
     values = [bom_id, user_id, part_no, row_num, country] + [fields.get(n) for n, _ in PURCHASE_FIELDS] + [fields.get(n) for n in extra_fields] + [datetime.datetime.now().isoformat(timespec="minutes"), updated_by]
     updates = ", ".join(f"{c}=excluded.{c}" for c in columns if c not in ("bom_id", "user_id", "part_no", "row_num", "country"))
@@ -785,23 +1065,6 @@ def vehicle_country_summary(conn, bom_id=None):
     """, (bom_id,)).fetchall()
     return [dict(r) for r in rows]
 
-def dashboard_case_matrix(conn, bom_id=None):
-    bom_id = _resolve_bom_id(conn, bom_id)
-    countries = list_bom_countries(conn, bom_id)
-    rows = []
-    for part in list_parts(conn, bom_id):
-        values = {}
-        for country in countries:
-            purchase = get_purchase(conn, part["part_no"], part["row_num"], country, bom_id) or {}
-            values[country] = {
-                "material": float(purchase.get("material_cost") or 0),
-                "logistics": float(purchase.get("logistics_cost") or 0),
-                "tariff": float(purchase.get("tariff_cost") or 0),
-                "total": float(purchase.get("total_cost") or 0),
-            }
-        rows.append({"category": part.get("category") or "-", "vehicle": part.get("vehicle") or "-", "part_name": part.get("part_name") or "-", "values": values})
-    return countries, rows
-
 def category_summary(conn, country, bom_id=None):
     bom_id = _resolve_bom_id(conn, bom_id)
     rows = conn.execute("""
@@ -818,49 +1081,151 @@ def category_summary(conn, country, bom_id=None):
     """, (bom_id, country)).fetchall()
     return [dict(r) for r in rows]
 
-def bom_tree(conn, country, vehicle=None, bom_id=None):
+def dashboard_report(conn, bom_id=None, vehicle=None):
+    bom_id = _resolve_bom_id(conn, bom_id)
+    countries = list_bom_countries(conn, bom_id)
+    overseas = [c for c in countries if c != "한국"]
+    sql = """
+        SELECT p.category as category, p.sub_category as sub_category, pd.country as country, pd.sourcing_part as sourcing_part,
+               CAST(pd.material_cost AS REAL) as material_cost,
+               CAST(pd.logistics_cost AS REAL) as logistics_cost,
+               CAST(pd.tariff_cost AS REAL) as tariff_cost,
+               CAST(pd.total_cost AS REAL) as total_cost
+        FROM bom_parts p JOIN bom_purchase_data pd
+          ON p.bom_id=pd.bom_id AND p.part_no=pd.part_no AND p.row_num=pd.row_num
+        WHERE p.bom_id=?
+    """
+    params = [bom_id]
+    if vehicle:
+        sql += " AND p.vehicle=?"
+        params.append(vehicle)
+    rows = conn.execute(sql, params).fetchall()
+
+    def blank_domestic():
+        return {"material": 0.0, "logistics": 0.0, "tariff": 0.0, "total": 0.0}
+
+    def blank_overseas():
+        return {"material_lp": 0.0, "material_kd": 0.0, "material_total": 0.0, "logistics": 0.0, "tariff": 0.0, "total": 0.0}
+
+    categories = {}
+    category_order = []
+    for r in rows:
+        cat = r["category"] or "미분류"
+        major = major_of(cat)
+        row_key = (r["sub_category"] or "미분류") if major == "TTMM" else cat
+        if row_key not in categories:
+            categories[row_key] = {"major": major, "domestic": blank_domestic(), "overseas": {c: blank_overseas() for c in overseas}}
+            category_order.append(row_key)
+        bucket = categories[row_key]
+        if r["country"] == "한국":
+            d = bucket["domestic"]
+            d["material"] += r["material_cost"] or 0
+            d["logistics"] += r["logistics_cost"] or 0
+            d["tariff"] += r["tariff_cost"] or 0
+            d["total"] += r["total_cost"] or 0
+        elif r["country"] in overseas:
+            o = bucket["overseas"][r["country"]]
+            material = r["material_cost"] or 0
+            if r["sourcing_part"] == "LP":
+                o["material_lp"] += material
+            elif r["sourcing_part"] == "KD":
+                o["material_kd"] += material
+            o["material_total"] += material
+            o["logistics"] += r["logistics_cost"] or 0
+            o["tariff"] += r["tariff_cost"] or 0
+            o["total"] += r["total_cost"] or 0
+
+    majors = {}
+    major_order = []
+    for cat_name in category_order:
+        data = categories[cat_name]
+        major = data["major"]
+        if major not in majors:
+            majors[major] = {"major": major, "categories": [], "domestic": blank_domestic(), "overseas": {c: blank_overseas() for c in overseas}}
+            major_order.append(major)
+        majors[major]["categories"].append({"category": cat_name, "domestic": data["domestic"], "overseas": data["overseas"]})
+        for key in ("material", "logistics", "tariff", "total"):
+            majors[major]["domestic"][key] += data["domestic"][key]
+        for c in overseas:
+            for key in ("material_lp", "material_kd", "material_total", "logistics", "tariff", "total"):
+                majors[major]["overseas"][c][key] += data["overseas"][c][key]
+
+    grand_domestic = blank_domestic()
+    grand_overseas = {c: blank_overseas() for c in overseas}
+    for major in majors.values():
+        for key in ("material", "logistics", "tariff", "total"):
+            grand_domestic[key] += major["domestic"][key]
+        for c in overseas:
+            for key in ("material_lp", "material_kd", "material_total", "logistics", "tariff", "total"):
+                grand_overseas[c][key] += major["overseas"][c][key]
+
+    return {
+        "overseas_countries": overseas,
+        "majors": [majors[m] for m in major_order],
+        "grand_domestic": grand_domestic,
+        "grand_overseas": grand_overseas,
+    }
+
+def summary_tree(conn, country, bom_id=None):
     bom_id = _resolve_bom_id(conn, bom_id)
     sql = """
-        SELECT p.part_no as part_no, p.row_num as row_num, p.category as category, p.vehicle as vehicle,
-               p.part_name as part_name, p.level_depth as level_depth,
+        SELECT p.part_no as part_no, p.row_num as row_num, p.category as category, p.sub_category as sub_category,
+               p.vehicle as vehicle, p.part_name as part_name, p.level_depth as level_depth,
                CAST(pd.material_cost AS REAL) as material_cost,
                CAST(pd.logistics_cost AS REAL) as logistics_cost,
                CAST(pd.tariff_cost AS REAL) as tariff_cost,
                CAST(pd.total_cost AS REAL) as total_cost
         FROM bom_parts p LEFT JOIN bom_purchase_data pd
           ON p.bom_id = pd.bom_id AND p.part_no = pd.part_no AND p.row_num = pd.row_num AND pd.country = ?
+        WHERE p.bom_id = ?
+        ORDER BY p.row_num
     """
-    params = [country, bom_id]
-    if vehicle:
-        sql += " WHERE p.bom_id = ? AND p.vehicle = ?"
-        params.append(vehicle)
-    else:
-        sql += " WHERE p.bom_id = ?"
-    sql += " ORDER BY p.row_num"
-    rows = conn.execute(sql, params).fetchall()
+    rows = conn.execute(sql, [country, bom_id]).fetchall()
+
+    def blank_sums():
+        return {"material_sum": 0.0, "logistics_sum": 0.0, "tariff_sum": 0.0, "total_sum": 0.0}
+
+    def add_sums(target, material, logistics, tariff, total):
+        target["material_sum"] += material
+        target["logistics_sum"] += logistics
+        target["tariff_sum"] += tariff
+        target["total_sum"] += total
 
     categories = {}
     order = []
+    ttmm_subs = {}
+    ttmm_order = []
+
     for r in rows:
         cat_name = r["category"] or "미분류"
-        if cat_name not in categories:
-            categories[cat_name] = {
-                "name": cat_name, "children": [], "stack": [],
-                "material_sum": 0.0, "logistics_sum": 0.0, "tariff_sum": 0.0, "total_sum": 0.0,
-            }
-            order.append(cat_name)
-        bucket = categories[cat_name]
-
         material_cost = r["material_cost"] or 0.0
         logistics_cost = r["logistics_cost"] or 0.0
         tariff_cost = r["tariff_cost"] or 0.0
         total_cost = r["total_cost"] or 0.0
+
+        if major_of(cat_name) == "TTMM":
+            sub_name = r["sub_category"] or "미분류"
+            if sub_name not in ttmm_subs:
+                ttmm_subs[sub_name] = {"name": sub_name, "children": [], **blank_sums()}
+                ttmm_order.append(sub_name)
+            bucket = ttmm_subs[sub_name]
+            bucket["children"].append({
+                "part_no": r["part_no"], "part_name": r["part_name"] or "", "vehicle": r["vehicle"] or "",
+                "material_cost": material_cost, "logistics_cost": logistics_cost,
+                "tariff_cost": tariff_cost, "total_cost": total_cost, "children": [],
+            })
+            add_sums(bucket, material_cost, logistics_cost, tariff_cost, total_cost)
+            continue
+
+        if cat_name not in categories:
+            categories[cat_name] = {"name": cat_name, "children": [], "stack": [], **blank_sums()}
+            order.append(cat_name)
+        bucket = categories[cat_name]
         node = {
             "part_no": r["part_no"], "part_name": r["part_name"] or "", "vehicle": r["vehicle"] or "",
             "material_cost": material_cost, "logistics_cost": logistics_cost,
             "tariff_cost": tariff_cost, "total_cost": total_cost, "children": [],
         }
-
         depth = r["level_depth"] if r["level_depth"] is not None else 0
         stack = bucket["stack"]
         while stack and stack[-1][0] >= depth:
@@ -870,18 +1235,61 @@ def bom_tree(conn, country, vehicle=None, bom_id=None):
         else:
             bucket["children"].append(node)
         stack.append((depth, node))
+        add_sums(bucket, material_cost, logistics_cost, tariff_cost, total_cost)
 
-        bucket["material_sum"] += material_cost
-        bucket["logistics_sum"] += logistics_cost
-        bucket["tariff_sum"] += tariff_cost
-        bucket["total_sum"] += total_cost
+    for cat_name in order:
+        del categories[cat_name]["stack"]
 
-    result = []
+    majors = {}
+    major_order = ["HVAC", "CRFM", "TTMM", "SENSOR", "E-COMP"]
+
+    def get_major(name):
+        if name not in majors:
+            majors[name] = {"name": name, "groups": {}, "group_order": [], **blank_sums()}
+        return majors[name]
+
     for cat_name in order:
         bucket = categories[cat_name]
-        del bucket["stack"]
-        result.append(bucket)
-    return result
+        major = get_major(major_of(cat_name))
+        group_name = group_of(cat_name)
+        if group_name not in major["groups"]:
+            major["groups"][group_name] = {
+                "name": group_name, "is_wrapper": group_name != cat_name,
+                "categories": [], **blank_sums(),
+            }
+            major["group_order"].append(group_name)
+        group = major["groups"][group_name]
+        group["categories"].append(bucket)
+        for key in ("material_sum", "logistics_sum", "tariff_sum", "total_sum"):
+            group[key] += bucket[key]
+            major[key] += bucket[key]
+
+    if ttmm_order:
+        major = get_major("TTMM")
+        for sub_name in ttmm_order:
+            sub_bucket = ttmm_subs[sub_name]
+            major["groups"][sub_name] = {
+                "name": sub_name, "is_wrapper": False,
+                "categories": [sub_bucket],
+                "material_sum": sub_bucket["material_sum"], "logistics_sum": sub_bucket["logistics_sum"],
+                "tariff_sum": sub_bucket["tariff_sum"], "total_sum": sub_bucket["total_sum"],
+            }
+            major["group_order"].append(sub_name)
+            for key in ("material_sum", "logistics_sum", "tariff_sum", "total_sum"):
+                major[key] += sub_bucket[key]
+
+    grand = blank_sums()
+    for major in majors.values():
+        for key in ("material_sum", "logistics_sum", "tariff_sum", "total_sum"):
+            grand[key] += major[key]
+
+    ordered_majors = [majors[m] for m in major_order if m in majors]
+    ordered_majors += [majors[m] for m in majors if m not in major_order]
+    for major in ordered_majors:
+        major["groups"] = [major["groups"][g] for g in major["group_order"]]
+        del major["group_order"]
+
+    return {"majors": ordered_majors, "grand": grand}
 
 def search_suggestions(conn, bom_id=None):
     bom_id = _resolve_bom_id(conn, bom_id)

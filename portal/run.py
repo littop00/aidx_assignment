@@ -4,12 +4,12 @@ import webbrowser
 from waitress import serve
 from app import app
 
-HOST = "127.0.0.1"
+HOST = "0.0.0.0"
 PORT = 5050
 
 
 def _open_browser():
-    webbrowser.open(f"http://{HOST}:{PORT}/")
+    webbrowser.open(f"http://127.0.0.1:{PORT}/")
 
 
 if __name__ == "__main__":

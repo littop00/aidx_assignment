@@ -1,13 +1,42 @@
-{% extends "base.html" %}
-{% block title %}내 담당 품목 | 재료비 관리 포탈{% endblock %}
+{% extends "base_new.html" %}
+{% block title %}내 담당 품목 | TMS Portal{% endblock %}
+{% block page_title %}내 담당 품목{% endblock %}
 {% block content %}
-<h1>내 담당 품목</h1>
-<p class="text-muted mb-4">내가 담당으로 선택한 품목 목록입니다. 제출 전(작성 중/반려 상태)에만 취소할 수 있습니다.</p>
-<div class="portal-card p-0 overflow-hidden"><table class="table mb-0 align-middle review-table"><thead><tr><th>차종</th><th>구분</th><th>품번</th><th>품명</th><th></th></tr></thead><tbody id="my-assignments-body">
-{% for part in parts %}<tr data-row-num="{{ part.row_num }}"><td>{{ part.vehicle or '-' }}</td><td>{{ part.category or '-' }}</td><td>{{ part.part_no }}</td><td>{{ part.part_name }}</td><td>{% if can_cancel %}<button type="button" class="btn btn-sm btn-outline-secondary cancel-assignment-btn" data-url="{{ url_for('bom.set_assignment', row_num=part.row_num) }}">취소</button>{% else %}<span class="text-muted small">제출됨</span>{% endif %}</td></tr>
-{% else %}<tr><td colspan="5" class="text-center text-muted py-5">담당으로 선택한 품목이 없습니다.</td></tr>{% endfor %}
-</tbody></table></div>
+{% if submission and submission.status == 'auto_submitted' %}<div class="bg-amber-50 border border-amber-200 text-amber-700 rounded-2xl shadow-sm mb-6 flex items-center gap-3 p-4"><i class="bi bi-exclamation-triangle-fill"></i><span class="text-sm font-semibold">마감기한이 지나 입력 내용이 <span class="badge badge-lg rounded-lg font-semibold px-3 py-1 border-none bg-amber-100 text-amber-700">자동제출</span> 처리되었습니다.</span></div>{% endif %}
+{% if active_version and active_version.due_date %}<p class="text-sm text-[#A3AED0] mb-1">마감기한: {{ active_version.due_date.replace('T', ' ') }}</p>{% endif %}
+<p class="text-sm text-[#A3AED0] mb-4">담당할 구분(카테고리)을 직접 선택하면 해당 구분의 모든 품목이 내 담당으로 지정됩니다. 제출 전(작성 중/반려 상태)에만 변경할 수 있습니다.</p>
+<div class="bg-white rounded-2xl p-6 md:p-8 shadow-sm border-none mb-6">
+    <h3 class="text-xl font-bold text-[#1B2559] mb-4">담당 구분 선택</h3>
+    <div class="flex flex-wrap gap-3">
+    {% for category in categories %}<label class="flex items-center gap-2 text-sm text-[#1B2559]"><input type="checkbox" class="checkbox checkbox-sm checkbox-primary category-toggle" data-url="{{ url_for('bom.set_category_membership', category=category) }}" {% if category in my_categories %}checked{% endif %} {% if not can_cancel %}disabled{% endif %}> {{ category }}</label>{% else %}<span class="text-sm text-[#A3AED0]">구분 정보가 없습니다.</span>{% endfor %}
+    </div>
+</div>
+<p class="text-sm text-[#A3AED0] mb-4">아래는 담당 구분 및 개별 지정으로 확보된 품목 목록입니다.</p>
+<div class="bg-white rounded-2xl p-6 md:p-8 shadow-sm border-none overflow-x-auto">
+<table class="table table-zebra w-full text-[#1B2559] text-sm">
+<thead><tr class="bg-transparent border-b border-base-content/10"><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-left">차종</th><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-left">구분</th><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-left">품번</th><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-left">품명</th><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-center"></th></tr></thead>
+<tbody id="my-assignments-body">
+{% for part in parts %}<tr class="border-b border-base-content/5 hover:bg-base-100/50" data-row-num="{{ part.row_num }}"><td class="text-left text-sm font-medium">{{ part.vehicle or '-' }}</td><td class="text-left text-sm font-medium">{{ part.category or '-' }}</td><td class="text-left text-sm font-medium">{{ part.part_no }}</td><td class="text-left text-sm font-medium">{{ part.part_name }}</td><td class="text-center">{% if can_cancel %}<button type="button" class="btn btn-ghost btn-sm rounded-xl cancel-assignment-btn" data-url="{{ url_for('bom.set_assignment', row_num=part.row_num) }}">취소</button>{% else %}<span class="text-sm text-[#A3AED0]">제출됨</span>{% endif %}</td></tr>
+{% else %}<tr><td colspan="5" class="text-center text-[#A3AED0] py-5">담당으로 선택한 품목이 없습니다.</td></tr>{% endfor %}
+</tbody>
+</table>
+</div>
 <script>
+document.addEventListener('change', async (event) => {
+  const checkbox = event.target.closest('.category-toggle');
+  if (!checkbox) return;
+  checkbox.disabled = true;
+  try {
+    const response = await fetch(checkbox.dataset.url, {method: 'POST', headers: {'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded'}, body: `member=${checkbox.checked ? '1' : '0'}`});
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.message || '변경에 실패했습니다.');
+  } catch (error) {
+    alert(error.message);
+    checkbox.checked = !checkbox.checked;
+  } finally {
+    checkbox.disabled = false;
+  }
+});
 document.addEventListener('click', async (event) => {
   const button = event.target.closest('.cancel-assignment-btn');
   if (!button) return;
@@ -19,7 +48,7 @@ document.addEventListener('click', async (event) => {
     if (!response.ok) throw new Error(payload.message || '취소에 실패했습니다.');
     button.closest('tr').remove();
     if (!document.querySelector('#my-assignments-body tr[data-row-num]')) {
-      document.getElementById('my-assignments-body').innerHTML = '<tr><td colspan="5" class="text-center text-muted py-5">담당으로 선택한 품목이 없습니다.</td></tr>';
+      document.getElementById('my-assignments-body').innerHTML = '<tr><td colspan="5" class="text-center text-[#A3AED0] py-5">담당으로 선택한 품목이 없습니다.</td></tr>';
     }
   } catch (error) {
     alert(error.message);

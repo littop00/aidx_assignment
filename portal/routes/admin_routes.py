@@ -1,11 +1,13 @@
 from functools import wraps
 
-from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for, abort
+from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, url_for, abort
 from flask_login import current_user, login_required
 from werkzeug.security import generate_password_hash
 
 import db
 import parser
+import logistics
+import calc
 from columns import DESIGN_FIELDS, PURCHASE_FIELDS
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -31,8 +33,16 @@ def bom_versions():
     submissions = db.list_submissions(conn, active["id"]) if active else []
     users = db.list_users(conn)
     draft_parts = {version["id"]: db.list_parts(conn, version["id"]) for version in versions if version["status"] == "draft"}
+    categories_by_version = {version["id"]: db.list_categories(conn, version["id"]) for version in versions}
+    logistics_settings = {version["id"]: (db.get_logistics_settings(conn, version["id"]) or {}) for version in versions}
+    logistics_rates = logistics.list_latest_rates(conn)
+    user_categories = {}
+    if active:
+        for category, members in db.list_category_members(conn, active["id"]).items():
+            for member in members:
+                user_categories.setdefault(member["id"], []).append(category)
     conn.close()
-    return render_template("admin_boms.html", versions=versions, active=active, countries=countries, version_countries=version_countries, differences=differences, submissions=submissions, users=users, draft_parts=draft_parts, design_fields=DESIGN_FIELDS)
+    return render_template("admin_boms.html", versions=versions, active=active, countries=countries, version_countries=version_countries, differences=differences, submissions=submissions, users=users, draft_parts=draft_parts, design_fields=DESIGN_FIELDS, categories_by_version=categories_by_version, logistics_settings=logistics_settings, logistics_rates=logistics_rates, user_categories=user_categories)
 
 @admin_bp.route("/boms/draft", methods=["POST"])
 @admin_required
@@ -123,6 +133,82 @@ def set_countries(bom_id):
     flash("초안 국가 설정을 저장했습니다.")
     return redirect(url_for("admin.bom_versions"))
 
+@admin_bp.route("/boms/<int:bom_id>/logistics-settings", methods=["POST"])
+@admin_required
+def set_logistics_settings(bom_id):
+    conn = db.get_connection(current_app.config["DB_PATH"])
+    version = db.get_bom_version(conn, bom_id)
+    if not version or version["status"] != "draft":
+        conn.close()
+        abort(400)
+    settings = {
+        "box_width": request.form.get("box_width"),
+        "box_depth": request.form.get("box_depth"),
+        "box_height": request.form.get("box_height"),
+        "boxes_per_container": request.form.get("boxes_per_container"),
+        "container_weight_limit_kg": request.form.get("container_weight_limit_kg"),
+        "export_packaging_cost": request.form.get("export_packaging_cost"),
+    }
+    db.set_logistics_settings(conn, bom_id, settings)
+    corrected = sum(
+        1 for part in db.list_parts(conn, bom_id)
+        if (boxes := calc.compute_effective_boxes(settings, part)) and boxes["auto_corrected"]
+    )
+    conn.close()
+    if corrected:
+        flash(f"물류 기준 설정을 저장했습니다. (중량 한도 초과로 {corrected}개 품목의 컨테이너당 박스수가 자동 조정되었습니다)")
+    else:
+        flash("물류 기준 설정을 저장했습니다.")
+    return redirect(url_for("admin.bom_versions"))
+
+@admin_bp.route("/logistics-rates", methods=["POST"])
+@admin_required
+def set_logistics_rate():
+    conn = db.get_connection(current_app.config["DB_PATH"])
+    country = request.form.get("country")
+    effective_date = request.form.get("effective_date")
+    if not country or not effective_date:
+        conn.close()
+        abort(400)
+    fields = {name: request.form.get(name) for name in logistics.RATE_FIELDS}
+    logistics.store_rate(conn, country, effective_date, fields)
+    conn.close()
+    flash(f"'{country}' 운임을 저장했습니다.")
+    return redirect(url_for("admin.bom_versions"))
+
+@admin_bp.route("/logistics-rates/<country>/<effective_date>/delete", methods=["POST"])
+@admin_required
+def delete_logistics_rate(country, effective_date):
+    conn = db.get_connection(current_app.config["DB_PATH"])
+    logistics.delete_rate(conn, country, effective_date)
+    conn.close()
+    flash(f"'{country}' 운임을 삭제했습니다.")
+    return redirect(url_for("admin.bom_versions"))
+
+@admin_bp.route("/boms/<int:bom_id>/due-date", methods=["POST"])
+@admin_required
+def set_due_date(bom_id):
+    conn = db.get_connection(current_app.config["DB_PATH"])
+    due_date = request.form.get("due_date") or None
+    db.set_bom_due_date(conn, bom_id, due_date)
+    conn.close()
+    flash("마감기한을 저장했습니다.")
+    return redirect(url_for("admin.bom_versions"))
+
+@admin_bp.route("/users/<int:user_id>/categories", methods=["POST"])
+@admin_required
+def set_user_categories(user_id):
+    conn = db.get_connection(current_app.config["DB_PATH"])
+    active = db.get_active_bom_version(conn)
+    if not active:
+        conn.close()
+        return jsonify({"ok": False, "message": "확정된 BOM이 없습니다."}), 400
+    selected = set(request.form.getlist("categories"))
+    for category in db.list_categories(conn, active["id"]):
+        db.set_category_membership(conn, active["id"], user_id, category, category in selected)
+    conn.close()
+    return jsonify({"ok": True, "message": "담당 품목을 저장했습니다.", "categories": sorted(selected)})
+
 @admin_bp.route("/boms/<int:bom_id>/rows", methods=["POST"])
 @admin_required
 def add_bom_row(bom_id):
@@ -167,18 +253,54 @@ def create_user():
     username = (request.form.get("username") or "").strip()
     password = request.form.get("password") or ""
     role = request.form.get("role") if request.form.get("role") in ("admin", "user") else "user"
+    categories = request.form.getlist("categories")
     if not username or not password:
-        flash("사용자명과 비밀번호를 입력해 주세요.")
-        return redirect(url_for("admin.bom_versions"))
+        return jsonify({"ok": False, "message": "사용자명과 비밀번호를 입력해 주세요."}), 400
     conn = db.get_connection(current_app.config["DB_PATH"])
     try:
         db.create_user(conn, username, generate_password_hash(password), role)
-        flash(f"{username} 사용자를 만들었습니다.")
     except Exception:
-        flash("이미 존재하는 사용자명입니다.")
-    finally:
         conn.close()
-    return redirect(url_for("admin.bom_versions"))
+        return jsonify({"ok": False, "message": "이미 존재하는 사용자명입니다."}), 400
+    user = db.get_user_by_username(conn, username)
+    active = db.get_active_bom_version(conn)
+    if active and categories and user:
+        for category in categories:
+            db.set_category_membership(conn, active["id"], user["id"], category, True)
+    conn.close()
+    return jsonify({"ok": True, "message": f"{username} 사용자를 만들었습니다.", "user": {"id": user["id"] if user else None, "username": username, "role": role, "categories": categories}})
+
+@admin_bp.route("/users/<int:user_id>/role", methods=["POST"])
+@admin_required
+def update_user_role(user_id):
+    role = request.form.get("role")
+    if role not in ("admin", "user"):
+        return jsonify({"ok": False, "message": "잘못된 권한 값입니다."}), 400
+    if user_id == current_user.id:
+        return jsonify({"ok": False, "message": "본인의 권한은 변경할 수 없습니다."}), 400
+    conn = db.get_connection(current_app.config["DB_PATH"])
+    if role == "user" and db.count_admins(conn) <= 1:
+        conn.close()
+        return jsonify({"ok": False, "message": "최소 1명의 관리자가 있어야 합니다."}), 400
+    db.update_user_role(conn, user_id, role)
+    conn.close()
+    return jsonify({"ok": True, "message": "권한을 변경했습니다."})
+
+@admin_bp.route("/users/delete", methods=["POST"])
+@admin_required
+def delete_users():
+    user_ids = [int(v) for v in request.form.getlist("user_id")]
+    user_ids = [uid for uid in user_ids if uid != current_user.id]
+    if not user_ids:
+        return jsonify({"ok": False, "message": "삭제할 사용자를 선택해 주세요."}), 400
+    conn = db.get_connection(current_app.config["DB_PATH"])
+    remaining_admins = db.count_admins(conn) - sum(1 for u in db.list_users(conn) if u["id"] in user_ids and u["role"] == "admin")
+    if remaining_admins < 1:
+        conn.close()
+        return jsonify({"ok": False, "message": "최소 1명의 관리자가 있어야 합니다."}), 400
+    deleted = db.delete_users(conn, user_ids)
+    conn.close()
+    return jsonify({"ok": True, "message": f"{deleted}명의 사용자를 삭제했습니다.", "deleted_ids": user_ids})
 
 @admin_bp.route("/reviews")
 @admin_required
@@ -227,3 +349,35 @@ def review_submission(submission_id, status):
     conn.close()
     flash("검토 상태를 저장했습니다.")
     return redirect(url_for("admin.reviews"))
+
+@admin_bp.route("/rows/confirm", methods=["POST"])
+@admin_required
+def confirm_rows():
+    conn = db.get_connection(current_app.config["DB_PATH"])
+    active = db.get_active_bom_version(conn)
+    if not active:
+        conn.close()
+        return jsonify({"ok": False, "message": "배포된 BOM이 없습니다."}), 404
+    if request.form.get("all") == "1":
+        row_nums = sorted({r["row_num"] for r in conn.execute("SELECT DISTINCT row_num FROM bom_parts WHERE bom_id=?", (active["id"],)).fetchall()})
+    else:
+        row_nums = sorted({int(value) for value in request.form.getlist("row_num")})
+    extra = ("sourcing_part_location", "sourcing_assembly_location", "special_fx_rate", "special_fx_reason")
+    confirmed = 0
+    for row_num in row_nums:
+        part = db.get_part_by_row_num(conn, row_num, active["id"])
+        owner = db.category_owner(conn, active["id"], part.get("category")) if part else None
+        if not owner:
+            continue
+        rows = conn.execute(
+            "SELECT * FROM bom_user_purchase_data WHERE bom_id=? AND user_id=? AND part_no=? AND row_num=?",
+            (active["id"], owner["id"], part["part_no"], row_num),
+        ).fetchall()
+        for row in rows:
+            values = dict(row)
+            fields = {name: values.get(name) for name, _ in PURCHASE_FIELDS}
+            fields.update({name: values.get(name) for name in extra})
+            db.upsert_purchase(conn, values["part_no"], values["row_num"], values["country"], fields, updated_by=current_user.username, bom_id=active["id"])
+        confirmed += 1
+    conn.close()
+    return jsonify({"ok": True, "confirmed": confirmed, "skipped": len(row_nums) - confirmed})

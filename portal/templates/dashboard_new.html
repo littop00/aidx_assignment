@@ -1,0 +1,75 @@
+{% extends "base_new.html" %}
+{% block title %}대시보드 - BOM 재료비 포탈{% endblock %}
+{% block page_title %}대시보드{% endblock %}
+{% block content %}
+{% if active_version %}<p class="text-sm text-[#A3AED0] mb-4 -mt-2">현재 확정 BOM: {{ active_version.name }} (v{{ active_version.version_no }})</p>{% endif %}
+
+<form class="bg-white rounded-2xl p-4 shadow-sm border-none mb-6 flex flex-row items-center gap-3" method="get">
+    <label class="font-medium text-sm text-[#1B2559]" for="dashboard-vehicle">차종</label>
+    <select id="dashboard-vehicle" name="vehicle" class="select select-bordered select-sm rounded-xl bg-base-100 border-base-300 focus:border-primary focus:outline-none transition-all" onchange="this.form.submit()">
+        {% for vehicle in vehicles %}<option value="{{ vehicle }}" {% if vehicle == selected_vehicle %}selected{% endif %}>{{ vehicle }}</option>{% endfor %}
+    </select>
+    <span class="text-sm text-[#A3AED0]">현재 차종의 국내·해외 비용을 보여줍니다.</span>
+</form>
+
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+    <div class="bg-white rounded-2xl p-6 shadow-sm border-none flex items-center justify-between">
+        <div>
+            <p class="text-sm font-medium text-[#A3AED0]">총 확보 수</p>
+            <p class="text-2xl font-bold text-[#1B2559] mt-1">{{ total_parts }}</p>
+        </div>
+        <div class="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 text-xl"><i class="bi bi-boxes"></i></div>
+    </div>
+    <div class="bg-white rounded-2xl p-6 shadow-sm border-none flex items-center justify-between">
+        <div>
+            <p class="text-sm font-medium text-[#A3AED0]">미입력 확보</p>
+            <p class="text-2xl font-bold text-[#1B2559] mt-1">{{ missing }}</p>
+        </div>
+        <div class="w-12 h-12 rounded-full bg-amber-50 flex items-center justify-center text-amber-500 text-xl"><i class="bi bi-exclamation-triangle"></i></div>
+    </div>
+    <div class="bg-white rounded-2xl p-6 shadow-sm border-none flex items-center justify-between">
+        <div>
+            <p class="text-sm font-medium text-[#A3AED0]">국내 비용</p>
+            <p class="text-2xl font-bold text-[#1B2559] mt-1">{{ "{:,.0f}".format(domestic_case_total) }}</p>
+        </div>
+        <div class="w-12 h-12 rounded-full bg-sky-50 flex items-center justify-center text-sky-500 text-xl"><i class="bi bi-house"></i></div>
+    </div>
+    <div class="bg-white rounded-2xl p-6 shadow-sm border-none flex items-center justify-between">
+        <div>
+            <p class="text-sm font-medium text-[#A3AED0]">해외 비용</p>
+            <p class="text-2xl font-bold text-[#1B2559] mt-1">{{ "{:,.0f}".format(overseas_case_total) }}</p>
+        </div>
+        <div class="w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-500 text-xl"><i class="bi bi-airplane"></i></div>
+    </div>
+</div>
+
+<div class="bg-white rounded-2xl p-6 shadow-sm border-none overflow-hidden">
+<div class="flex justify-between items-center mb-4">
+    <h3 class="text-xl font-bold text-[#1B2559]">재료비 Summary</h3>
+    <a class="btn btn-outline btn-primary btn-sm flex items-center gap-2" href="{{ url_for('home.export_dashboard', vehicle=selected_vehicle) }}"><i class="bi bi-file-earmark-excel"></i> Excel 다운로드</a>
+</div>
+<div class="overflow-x-auto">
+<table class="table report-summary-table text-sm">
+<thead>
+<tr class="bg-transparent border-b border-base-content/10"><th rowspan="2" class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-left">대분류</th><th rowspan="2" class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-left">구분</th><th colspan="4" class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-center">내수</th>{% for country in report.overseas_countries %}<th colspan="6" class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-center">{{ country }}</th>{% endfor %}</tr>
+<tr class="bg-transparent border-b border-base-content/10"><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-right">재료비</th><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-right">물류비</th><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-right">관세</th><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-right">합계</th>{% for country in report.overseas_countries %}<th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-right">LP</th><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-right">KD</th><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-right">재료비 합계</th><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-right">물류비</th><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-right">관세</th><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-right">합계</th>{% endfor %}</tr>
+</thead>
+<tbody>
+{% for major in report.majors %}{% set major_id = 'mg-' ~ loop.index %}<tr class="summary-major-row font-semibold border-b border-base-content/5 hover:bg-base-100/50"><th class="summary-major-toggle cursor-pointer text-left" colspan="2" data-major-target="{{ major_id }}"><span class="major-chevron">▾</span> {{ major.major }}</th><td class="text-right font-medium">{{ '{:,.0f}'.format(major.domestic_total.material) }}</td><td class="text-right font-medium">{{ '{:,.0f}'.format(major.domestic_total.logistics) }}</td><td class="text-right font-medium">{{ '{:,.0f}'.format(major.domestic_total.tariff) }}</td><td class="text-right font-medium">{{ '{:,.0f}'.format(major.domestic_total.total) }}</td>{% for country in report.overseas_countries %}{% set mo = major.overseas_total[country] %}<td class="text-right font-medium">{{ '{:,.0f}'.format(mo.material_lp) }}</td><td class="text-right font-medium">{{ '{:,.0f}'.format(mo.material_kd) }}</td><td class="text-right font-medium">{{ '{:,.0f}'.format(mo.material_total) }}</td><td class="text-right font-medium">{{ '{:,.0f}'.format(mo.logistics) }}</td><td class="text-right font-medium">{{ '{:,.0f}'.format(mo.tariff) }}</td><td class="text-right font-medium">{{ '{:,.0f}'.format(mo.total) }}</td>{% endfor %}</tr>{% for cat in major.categories %}<tr class="summary-cat-row border-b border-base-content/5 hover:bg-base-100/50" data-major-row="{{ major_id }}"><td class="text-left"></td><td class="text-left font-medium">{{ cat.category }}</td><td class="text-right font-medium">{{ '{:,.0f}'.format(cat.domestic.material) }}</td><td class="text-right font-medium">{{ '{:,.0f}'.format(cat.domestic.logistics) }}</td><td class="text-right font-medium">{{ '{:,.0f}'.format(cat.domestic.tariff) }}</td><td class="text-right font-medium">{{ '{:,.0f}'.format(cat.domestic.total) }}</td>{% for country in report.overseas_countries %}{% set o = cat.overseas[country] %}<td class="text-right font-medium">{{ '{:,.0f}'.format(o.material_lp) }}</td><td class="text-right font-medium">{{ '{:,.0f}'.format(o.material_kd) }}</td><td class="text-right font-medium">{{ '{:,.0f}'.format(o.material_total) }}</td><td class="text-right font-medium">{{ '{:,.0f}'.format(o.logistics) }}</td><td class="text-right font-medium">{{ '{:,.0f}'.format(o.tariff) }}</td><td class="text-right font-medium">{{ '{:,.0f}'.format(o.total) }}</td>{% endfor %}</tr>{% endfor %}{% else %}<tr><td colspan="99" class="text-center text-base-content/50 py-4">데이터가 없습니다.</td></tr>{% endfor %}
+</tbody>
+<tfoot><tr class="font-bold text-base border-t border-base-content/10"><th colspan="2" class="text-left text-base">합 계</th><td class="text-right">{{ '{:,.0f}'.format(report.grand_domestic.material) }}</td><td class="text-right">{{ '{:,.0f}'.format(report.grand_domestic.logistics) }}</td><td class="text-right">{{ '{:,.0f}'.format(report.grand_domestic.tariff) }}</td><td class="text-right">{{ '{:,.0f}'.format(report.grand_domestic.total) }}</td>{% for country in report.overseas_countries %}{% set go = report.grand_overseas[country] %}<td class="text-right">{{ '{:,.0f}'.format(go.material_lp) }}</td><td class="text-right">{{ '{:,.0f}'.format(go.material_kd) }}</td><td class="text-right">{{ '{:,.0f}'.format(go.material_total) }}</td><td class="text-right">{{ '{:,.0f}'.format(go.logistics) }}</td><td class="text-right">{{ '{:,.0f}'.format(go.tariff) }}</td><td class="text-right">{{ '{:,.0f}'.format(go.total) }}</td>{% endfor %}</tr></tfoot>
+</table>
+</div>
+</div>
+</div>
+<script>
+document.addEventListener('click', (event) => {
+  const th = event.target.closest('.summary-major-toggle');
+  if (!th) return;
+  const collapsed = th.classList.toggle('collapsed');
+  document.querySelectorAll(`tr[data-major-row="${th.dataset.majorTarget}"]`).forEach((row) => {
+    row.style.display = collapsed ? 'none' : '';
+  });
+});
+</script>
+{% endblock %}
