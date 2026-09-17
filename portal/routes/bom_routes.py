@@ -1,6 +1,6 @@
 from collections import Counter
 
-from flask import Blueprint, render_template, request, current_app, jsonify, redirect, url_for
+from flask import Blueprint, render_template, request, current_app, jsonify, redirect, url_for, abort
 from flask_login import login_required, current_user
 import db
 import calc
@@ -119,11 +119,12 @@ def index():
     parts = db.list_parts(conn)
     latest_bom_upload = db.get_latest_bom_upload(conn)
     progress = db.submission_progress(conn, active_version["id"], int(current_user.id)) if active_version else {"done": 0, "total": 0, "percent": 0}
+    overseas_countries = [c for c in db.list_bom_countries(conn, active_version["id"]) if c != "한국"] if active_version else []
     conn.close()
     category_counts = Counter(p["category"] for p in parts if p.get("category"))
     categories = sorted(category_counts)
     return render_template(
-        "bom.html", countries=COUNTRIES, suggestions=suggestions,
+        "bom.html", countries=COUNTRIES, overseas_countries=overseas_countries, suggestions=suggestions,
         categories=categories, category_counts=category_counts,
         latest_bom_upload=latest_bom_upload, active_version=active_version, submission=submission,
         can_edit=current_user.role != "admin" and (submission and submission["status"] in ("draft", "returned")),
@@ -526,6 +527,18 @@ def submission_detail(submission_id):
     revision_history = db.list_submission_revisions(history_conn, submission_id)
     history_conn.close()
     return render_template("submission_detail.html", submission=submission, snapshot=db.submission_snapshot(submission), revision_history=revision_history, review_mode=False)
+
+@bom_bp.route("/submissions/<int:submission_id>/recall", methods=["POST"])
+@login_required
+def recall_submission(submission_id):
+    conn = db.get_connection(current_app.config["DB_PATH"])
+    submission = db.get_submission(conn, submission_id)
+    if not submission or submission["user_id"] != int(current_user.id) or submission["status"] != "submitted":
+        conn.close()
+        abort(404)
+    db.update_submission_status(conn, submission["bom_version_id"], int(current_user.id), "draft")
+    conn.close()
+    return redirect(url_for("bom.submissions"))
 
 @bom_bp.route("/row/<part_no>/<int:row_num>/<country>/history")
 @login_required

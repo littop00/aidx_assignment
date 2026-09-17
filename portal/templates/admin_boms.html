@@ -43,9 +43,9 @@
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
       <div>
-        <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-wider mb-3">BOM 파일 업로드 <span class="normal-case font-medium text-[#A3AED0]">(현재: {{ version.file_name or '-' }})</span></h4>
+        <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-wider mb-3">BOM 파일 업로드 <span id="bom-file-name-{{ version.id }}" class="normal-case font-medium text-[#A3AED0]">(현재: {{ version.file_name or '선택된 파일 없음' }})</span></h4>
         <form class="admin-upload-form flex items-center gap-2 mb-6" method="post" action="{{ url_for('admin.upload_draft', bom_id=version.id) }}" enctype="multipart/form-data">
-          <input type="file" name="bom_file" accept=".xlsx" required class="file-input file-input-bordered file-input-sm rounded-xl w-full">
+          <input type="file" name="bom_file" accept=".xlsx" required class="file-input file-input-bordered file-input-sm rounded-xl w-full" onchange="document.getElementById('bom-file-name-{{ version.id }}').textContent = this.files[0] ? '(선택됨: ' + this.files[0].name + ')' : '(선택된 파일 없음)'">
           <button class="btn btn-primary btn-sm rounded-xl shrink-0">업로드</button>
         </form>
 

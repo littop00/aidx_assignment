@@ -929,7 +929,7 @@ def set_part_group(conn, bom_id, parent_part_no, parent_row_num, owner_user_id, 
     if len(descendants) < 2:
         raise ValueError("하위 품목이 있는 상위 품목만 그룹으로 지정할 수 있습니다.")
     conn.execute("INSERT OR REPLACE INTO bom_part_groups (bom_id,parent_part_no,parent_row_num,owner_user_id,created_at) VALUES (?,?,?,?,?)", (bom_id,parent_part_no,parent_row_num,owner_user_id,datetime.datetime.now().isoformat(timespec="seconds")))
-    conn.execute("INSERT OR IGNORE INTO bom_part_assignments (bom_id,user_id,part_no,row_num,assigned_at) VALUES (?,?,?,?,?)", (bom_id,owner_user_id,parent_part_no,parent_row_num,datetime.datetime.now().isoformat(timespec="seconds")))
+    conn.executemany("INSERT OR IGNORE INTO bom_part_assignments (bom_id,user_id,part_no,row_num,assigned_at) VALUES (?,?,?,?,?)", [(bom_id,owner_user_id,p["part_no"],p["row_num"],datetime.datetime.now().isoformat(timespec="seconds")) for p in descendants])
     conn.execute("DELETE FROM bom_part_group_members WHERE bom_id=? AND parent_part_no=? AND parent_row_num=?", (bom_id,parent_part_no,parent_row_num))
     conn.executemany("INSERT OR REPLACE INTO bom_part_group_members (bom_id,parent_part_no,parent_row_num,part_no,row_num) VALUES (?,?,?,?,?)", [(bom_id,parent_part_no,parent_row_num,p["part_no"],p["row_num"]) for p in descendants])
     conn.commit()
