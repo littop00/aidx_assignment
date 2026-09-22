@@ -308,6 +308,7 @@ tr.row-highlight td { animation:row-highlight-flash 1.6s ease; }
 .bom-table .country-group-header { background: #e9edff !important; color: var(--portal-accent); }
 .bom-table .country-group-header[data-country="미국"] { background: #dff3f5 !important; color: #166b75; }
 .bom-table .country-group-header[data-country="유럽"] { background: #fbe8ef !important; color: #9b3c61; }
+#grid-container.hide-domestic .domestic-group-header, #grid-container.hide-domestic .domestic-cell { display: none; }
 .report-summary-table { border-collapse: separate; border-spacing: 0; }
 .report-summary-table td, .report-summary-table tbody th { border: none; border-bottom: 1px solid hsl(var(--bc) / 0.05); box-shadow: none !important; padding: .6rem .75rem; font-variant-numeric: tabular-nums; text-align: right; }
 .report-summary-table td:nth-child(1), .report-summary-table td:nth-child(2) { text-align: left; }

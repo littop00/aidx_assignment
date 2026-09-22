@@ -380,11 +380,17 @@ def init_db(conn):
     conn.commit()
 
 def get_active_bom_version(conn):
-    row = conn.execute("SELECT * FROM bom_versions WHERE status = 'published' AND COALESCE(is_withdrawn, 0) = 0 ORDER BY version_no DESC LIMIT 1").fetchone()
+    row = conn.execute("SELECT * FROM bom_versions WHERE status = 'published' AND COALESCE(is_withdrawn, 0) = 0 AND COALESCE(is_confirmed, 0) = 0 ORDER BY version_no DESC LIMIT 1").fetchone()
     return dict(row) if row else None
 
 def list_bom_versions(conn):
     return [dict(row) for row in conn.execute("SELECT * FROM bom_versions ORDER BY version_no DESC").fetchall()]
+
+def get_display_bom_version(conn):
+    active = get_active_bom_version(conn)
+    if active:
+        return active
+    return next((v for v in list_bom_versions(conn) if v["status"] in ("published", "archived")), None)
 
 def get_bom_version(conn, bom_id):
     row = conn.execute("SELECT * FROM bom_versions WHERE id = ?", (bom_id,)).fetchone()
@@ -509,7 +515,7 @@ def publish_bom_version(conn, bom_id):
 def withdraw_bom_version(conn, bom_id, reason, withdrawn_by):
     now = datetime.datetime.now().isoformat(timespec="seconds")
     version = get_bom_version(conn, bom_id)
-    if not version or version["status"] != "published":
+    if not version or version["status"] != "published" or version["is_confirmed"]:
         return False
     conn.execute("UPDATE bom_versions SET is_withdrawn=1, withdrawn_at=?, withdrawal_reason=? WHERE id=?", (now, reason, bom_id))
     users = conn.execute("SELECT id FROM users WHERE role = 'user'").fetchall()
@@ -708,23 +714,26 @@ def enforce_due_dates(conn):
             notify_admins(conn, "BOM 자동 제출 발생", f"{version['name']}의 마감기한 경과로 {len(pending)}명의 입력이 자동 제출되었습니다.", kind="warning", link="/admin/reviews")
     conn.commit()
 
-def try_confirm_bom_version(conn, bom_version_id):
-    submissions = conn.execute("SELECT status FROM bom_submissions WHERE bom_version_id=?", (bom_version_id,)).fetchall()
-    if not submissions or any(row["status"] != "approved" for row in submissions):
-        return False
+def confirm_bom_version(conn, bom_version_id):
     version = get_bom_version(conn, bom_version_id)
     if not version or version["is_confirmed"]:
         return False
     now = datetime.datetime.now().isoformat(timespec="seconds")
     conn.execute("UPDATE bom_versions SET is_confirmed=1, confirmed_at=? WHERE id=?", (now, bom_version_id))
     user_ids = [row["id"] for row in conn.execute("SELECT id FROM users").fetchall()]
-    message = f"{version['name']} (Rev.{version['version_no']})의 모든 사용자 제출이 승인되어 확정되었습니다."
+    message = f"{version['name']} (Rev.{version['version_no']})가 확정되어 더 이상 수정할 수 없습니다."
     conn.executemany(
         "INSERT INTO notifications (user_id, title, message, kind, link, created_at) VALUES (?, ?, ?, 'info', '/bom/', ?)",
         [(user_id, "BOM 확정", message, now) for user_id in user_ids],
     )
     conn.commit()
     return True
+
+def try_confirm_bom_version(conn, bom_version_id):
+    submissions = conn.execute("SELECT status FROM bom_submissions WHERE bom_version_id=?", (bom_version_id,)).fetchall()
+    if not submissions or any(row["status"] != "approved" for row in submissions):
+        return False
+    return confirm_bom_version(conn, bom_version_id)
 
 def save_latest_bom_upload(conn, file_name, uploaded_by, inserted_count, updated_count):
     conn.execute(

@@ -36,10 +36,23 @@
             <i class="bi bi-speedometer2 text-lg"></i> 대시보드
           </a>
         </li>
-        <li>
-          <a href="{{ url_for('bom.index') }}" class="flex items-center gap-3 px-4 py-3 rounded-xl font-medium {% if request.endpoint in ('bom.index', 'bom.grid', 'bom.summary') %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
-            <i class="bi bi-table text-lg"></i> BOM 조회
+        <li x-data="{ open: {{ 'true' if request.endpoint in ('bom.index', 'bom.grid', 'bom.summary', 'bom.history') else 'false' }} }">
+          <a href="#" @click.prevent="open = !open" class="flex items-center justify-between gap-3 px-4 py-3 rounded-xl font-medium cursor-pointer {% if request.endpoint in ('bom.index', 'bom.grid', 'bom.summary', 'bom.history') %}text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
+            <span class="flex items-center gap-3"><i class="bi bi-table text-lg"></i> BOM 조회/관리</span>
+            <i class="bi text-xs" :class="open ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
           </a>
+          <ul x-show="open" x-cloak class="pl-8 mt-1 flex flex-col gap-1">
+            <li>
+              <a href="{{ url_for('bom.index') }}" class="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium {% if request.endpoint in ('bom.index', 'bom.grid', 'bom.summary') and not request.args.get('version_id') %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
+                현재 BOM
+              </a>
+            </li>
+            <li>
+              <a href="{{ url_for('bom.history') }}" class="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium {% if request.endpoint == 'bom.history' or (request.endpoint in ('bom.index', 'bom.grid') and request.args.get('version_id')) %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
+                BOM 이력
+              </a>
+            </li>
+          </ul>
         </li>
 
         {% if current_user.role != 'admin' %}

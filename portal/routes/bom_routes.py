@@ -58,12 +58,12 @@ def _build_row_view(part, purchase):
     row["note"] = purchase.get("note") or ""
     return row
 
-def _filtered_rows(conn, countries, status, search, categories=None, user_id=None, assigned_only=False):
+def _filtered_rows(conn, countries, status, search, categories=None, user_id=None, assigned_only=False, bom_id=None):
     primary_country = countries[0]
-    parts = db.list_parts(conn)
+    parts = db.list_parts(conn, bom_id)
     keyword = (search or "").strip().lower()
     categories = set(categories) if categories else None
-    active = db.get_active_bom_version(conn)
+    active = db.get_bom_version(conn, bom_id) if bom_id else db.get_active_bom_version(conn)
     assigned_keys = db.assigned_part_keys(conn, active["id"], user_id) if active and user_id is not None else set()
     rows = []
     for p in parts:
@@ -79,7 +79,7 @@ def _filtered_rows(conn, countries, status, search, categories=None, user_id=Non
             continue
         owner = db.category_owner(conn, active["id"], p.get("category")) if user_id is None and active else None
         effective_user_id = user_id if user_id is not None else (owner["id"] if owner else None)
-        purchase = db.get_user_purchase(conn, p["part_no"], p["row_num"], primary_country, effective_user_id) if effective_user_id else db.get_purchase(conn, p["part_no"], p["row_num"], primary_country)
+        purchase = db.get_user_purchase(conn, p["part_no"], p["row_num"], primary_country, effective_user_id, bom_id) if effective_user_id else db.get_purchase(conn, p["part_no"], p["row_num"], primary_country, bom_id)
         row = _build_row_view(p, purchase)
         row["target_user_id"] = owner["id"] if owner else None
         row["target_user_name"] = owner["username"] if owner else None
@@ -94,7 +94,7 @@ def _filtered_rows(conn, countries, status, search, categories=None, user_id=Non
         row["mip"] = any((row["country_data"].get(c, {}).get("sourcing_part") or "") == "MIP" for c in countries) if "country_data" in row else False
         row["assigned"] = is_assigned
         row["country_data"] = {
-            country: _build_row_view(p, db.get_user_purchase(conn, p["part_no"], p["row_num"], country, effective_user_id) if effective_user_id else db.get_purchase(conn, p["part_no"], p["row_num"], country))
+            country: _build_row_view(p, db.get_user_purchase(conn, p["part_no"], p["row_num"], country, effective_user_id, bom_id) if effective_user_id else db.get_purchase(conn, p["part_no"], p["row_num"], country, bom_id))
             for country in countries
         }
         row["mip"] = any((row["country_data"][c].get("sourcing_part") or "").upper().startswith("MIP") for c in countries)
@@ -114,21 +114,67 @@ def _filtered_rows(conn, countries, status, search, categories=None, user_id=Non
 def index():
     conn = db.get_connection(current_app.config["DB_PATH"])
     active_version = db.get_active_bom_version(conn)
-    submission = db.get_or_create_submission(conn, active_version["id"], int(current_user.id)) if active_version else None
+    version_id = request.args.get("version_id", type=int)
+    if version_id:
+        view_version = db.get_bom_version(conn, version_id)
+        if not view_version or view_version["status"] not in ("published", "archived"):
+            conn.close()
+            abort(404)
+    else:
+        view_version = active_version
+    viewing_history = bool(view_version) and (not active_version or view_version["id"] != active_version["id"])
+
+    submission = db.get_or_create_submission(conn, view_version["id"], int(current_user.id)) if view_version else None
     suggestions = db.search_suggestions(conn)
-    parts = db.list_parts(conn)
+    parts = db.list_parts(conn, view_version["id"] if view_version else None)
     latest_bom_upload = db.get_latest_bom_upload(conn)
-    progress = db.submission_progress(conn, active_version["id"], int(current_user.id)) if active_version else {"done": 0, "total": 0, "percent": 0}
-    overseas_countries = [c for c in db.list_bom_countries(conn, active_version["id"]) if c != "한국"] if active_version else []
+    progress = db.submission_progress(conn, view_version["id"], int(current_user.id)) if view_version else {"done": 0, "total": 0, "percent": 0}
+    overseas_countries = [c for c in db.list_bom_countries(conn, view_version["id"]) if c != "한국"] if view_version else []
     conn.close()
     category_counts = Counter(p["category"] for p in parts if p.get("category"))
     categories = sorted(category_counts)
     return render_template(
         "bom.html", countries=COUNTRIES, overseas_countries=overseas_countries, suggestions=suggestions,
         categories=categories, category_counts=category_counts,
-        latest_bom_upload=latest_bom_upload, active_version=active_version, submission=submission,
-        can_edit=current_user.role != "admin" and (submission and submission["status"] in ("draft", "returned")),
+        latest_bom_upload=latest_bom_upload, active_version=view_version, submission=submission,
+        can_edit=(not viewing_history) and current_user.role != "admin" and (submission and submission["status"] in ("draft", "returned")),
         progress=progress,
+        viewing_history=viewing_history, view_version=view_version,
+    )
+
+@bom_bp.route("/history")
+@login_required
+def history():
+    conn = db.get_connection(current_app.config["DB_PATH"])
+    active = db.get_active_bom_version(conn)
+    versions = [v for v in db.list_bom_versions(conn) if v["status"] in ("published", "archived")]
+    conn.close()
+    for v in versions:
+        v["is_active"] = bool(active) and v["id"] == active["id"]
+
+    status = request.args.get("status", "")
+    search = (request.args.get("search") or "").strip().lower()
+    date_from = request.args.get("date_from", "")
+    date_to = request.args.get("date_to", "")
+    show_unconfirmed = request.args.get("show_unconfirmed") == "1"
+
+    if not show_unconfirmed:
+        versions = [v for v in versions if v["is_active"] or v["is_confirmed"]]
+    if status == "active":
+        versions = [v for v in versions if v["is_active"]]
+    elif status == "confirmed":
+        versions = [v for v in versions if v["is_confirmed"] and not v["is_active"]]
+    if search:
+        versions = [v for v in versions if search in (v["name"] or "").lower() or search in (v["vehicle"] or "").lower()]
+    if date_from:
+        versions = [v for v in versions if v["confirmed_at"] and v["confirmed_at"] >= date_from]
+    if date_to:
+        versions = [v for v in versions if v["confirmed_at"] and v["confirmed_at"] <= date_to + "T23:59:59"]
+
+    return render_template(
+        "bom_history.html", versions=versions, active=active,
+        status=status, search=request.args.get("search", ""), date_from=date_from, date_to=date_to,
+        show_unconfirmed=show_unconfirmed,
     )
 
 @bom_bp.route("/my-bom")
@@ -163,6 +209,7 @@ def grid():
     categories = request.args.getlist("category")
     assigned_only = request.args.get("assigned") == "1"
     scope = request.args.get("scope")
+    version_id = request.args.get("version_id", type=int)
     page = int(request.args.get("page", 1))
     page_size = int(request.args.get("page_size", PAGE_SIZE))
     if page_size not in PAGE_SIZE_OPTIONS:
@@ -170,13 +217,22 @@ def grid():
 
     conn = db.get_connection(current_app.config["DB_PATH"])
     active_version = db.get_active_bom_version(conn)
-    submission = db.get_or_create_submission(conn, active_version["id"], int(current_user.id)) if active_version else None
-    configured_countries = [country for country in db.list_bom_countries(conn, active_version["id"] if active_version else None) if country != "한국"]
+    if version_id:
+        target_version = db.get_bom_version(conn, version_id)
+        if not target_version or target_version["status"] not in ("published", "archived"):
+            conn.close()
+            abort(404)
+    else:
+        target_version = active_version
+    viewing_history = bool(target_version) and (not active_version or target_version["id"] != active_version["id"])
+
+    submission = db.get_or_create_submission(conn, target_version["id"], int(current_user.id)) if target_version else None
+    configured_countries = [country for country in db.list_bom_countries(conn, target_version["id"] if target_version else None) if country != "한국"]
     if current_user.role != "admin" or not selected_countries:
         selected_countries = configured_countries
     display_countries = ["한국"] + selected_countries
     input_user_id = None if current_user.role == "admin" else int(current_user.id)
-    all_rows = _filtered_rows(conn, display_countries, status, search, categories, input_user_id, assigned_only)
+    all_rows = _filtered_rows(conn, display_countries, status, search, categories, input_user_id, assigned_only, bom_id=target_version["id"] if target_version else None)
     overseas_countries = db.list_overseas_countries(conn)
     conn.close()
 
@@ -208,13 +264,15 @@ def grid():
         assembly_sourcing_options=["KD", "LP", "MIP"],
         design_field_labels=DESIGN_FIELD_LABELS,
         selected_countries=selected_countries,
-        can_manage_countries=current_user.role == "admin",
+        can_manage_countries=current_user.role == "admin" and not viewing_history,
         is_admin=current_user.role == "admin",
-        can_edit=True if current_user.role == "admin" else (scope == "my_bom" and submission and submission["status"] in ("draft", "returned")),
-        assignment_enabled=current_user.role != "admin" and scope == "my_bom",
-        show_group_button=current_user.role == "admin" or scope == "my_bom",
-        show_confirm_button=current_user.role == "admin",
+        can_edit=False if viewing_history else (True if current_user.role == "admin" else (scope == "my_bom" and submission and submission["status"] in ("draft", "returned"))),
+        assignment_enabled=False if viewing_history else (current_user.role != "admin" and scope == "my_bom"),
+        show_group_button=False if viewing_history else (current_user.role == "admin" or scope == "my_bom"),
+        show_confirm_button=False if viewing_history else (current_user.role == "admin"),
         assigned_only=assigned_only,
+        viewing_history=viewing_history,
+        version_id=target_version["id"] if target_version else None,
     )
 
 @bom_bp.route("/rows", methods=["POST"])
@@ -246,7 +304,8 @@ def add_row():
 def summary():
     country = request.args.get("country", COUNTRIES[0])
     conn = db.get_connection(current_app.config["DB_PATH"])
-    tree = db.summary_tree(conn, country)
+    display_version = db.get_display_bom_version(conn)
+    tree = db.summary_tree(conn, country, display_version["id"] if display_version else None)
     conn.close()
     grand = tree["grand"]
     return render_template(

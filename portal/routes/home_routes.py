@@ -3,7 +3,7 @@ import io
 from flask import Blueprint, render_template, request, redirect, url_for, current_app, flash, send_file
 from flask_login import login_required, current_user
 from openpyxl import Workbook
-from openpyxl.styles import Alignment, Font
+from openpyxl.styles import Alignment, Font, PatternFill, Border, Side
 import db
 import fx
 import parser
@@ -14,21 +14,16 @@ home_bp = Blueprint("home", __name__)
 @login_required
 def index():
     conn = db.get_connection(current_app.config["DB_PATH"])
-    parts = db.list_parts(conn)
-    vehicles = db.list_vehicles(conn)
+    active_version = db.get_active_bom_version(conn)
+    display_version = db.get_display_bom_version(conn)
+    display_bom_id = display_version["id"] if display_version else None
+    vehicles = db.list_vehicles(conn, display_bom_id)
     selected_vehicle = request.args.get("vehicle", "NE2_NV1")
     if selected_vehicle not in vehicles:
         selected_vehicle = vehicles[0] if vehicles else ""
-    missing = sum(
-        1 for p in parts
-        if not db.list_purchase_for_part(conn, p["part_no"], p["row_num"])
-    )
     usd = fx.get_latest_rate(conn, "USD")
     eur = fx.get_latest_rate(conn, "EUR")
-    active_version = db.get_active_bom_version(conn)
-    active_bom_id = active_version["id"] if active_version else None
-    vehicle_summary = db.vehicle_country_summary(conn, active_bom_id)
-    report = db.dashboard_report(conn, active_bom_id, selected_vehicle)
+    report = db.dashboard_report(conn, display_bom_id, selected_vehicle)
     for major in report["majors"]:
         dom_total = {"material": 0.0, "logistics": 0.0, "tariff": 0.0, "total": 0.0}
         over_total = {c: {"material_lp": 0.0, "material_kd": 0.0, "material_total": 0.0, "logistics": 0.0, "tariff": 0.0, "total": 0.0} for c in report["overseas_countries"]}
@@ -42,25 +37,10 @@ def index():
         major["overseas_total"] = over_total
     latest_bom_upload = db.get_latest_bom_upload(conn)
     conn.close()
-    domestic_rows = [row for row in vehicle_summary if row["country"] == "한국"]
-    overseas_rows = [row for row in vehicle_summary if row["country"] != "한국"]
-    domestic_case_total = sum(float(row["material_sum"] or 0) for row in domestic_rows)
-    overseas_case_total = sum(float(row["total_sum"] or 0) for row in overseas_rows)
-    case_summary = [
-        {"case_name": "Case 1", "case_type": "국내", "country": "한국", "vehicle": row["vehicle"], "material": row["material_sum"] or 0, "logistics": 0, "total": row["material_sum"] or 0}
-        for row in domestic_rows
-    ] + [
-        {"case_name": "Case 2", "case_type": "해외", "country": row["country"], "vehicle": row["vehicle"], "material": row["material_sum"] or 0, "logistics": (row["total_sum"] or 0) - (row["material_sum"] or 0), "total": row["total_sum"] or 0}
-        for row in overseas_rows
-    ]
     return render_template(
         "dashboard_new.html",
-        total_parts=len(parts), missing=missing, usd=usd, eur=eur,
-        vehicle_summary=vehicle_summary,
-        domestic_case_total=domestic_case_total,
-        overseas_case_total=overseas_case_total,
+        usd=usd, eur=eur,
         latest_bom_upload=latest_bom_upload,
-        case_summary=case_summary,
         report=report,
         vehicles=vehicles,
         selected_vehicle=selected_vehicle,
@@ -71,92 +51,100 @@ def index():
 @login_required
 def export_dashboard():
     conn = db.get_connection(current_app.config["DB_PATH"])
-    vehicles = db.list_vehicles(conn)
+    display_version = db.get_display_bom_version(conn)
+    display_bom_id = display_version["id"] if display_version else None
+    vehicles = db.list_vehicles(conn, display_bom_id)
     selected_vehicle = request.args.get("vehicle", "NE2_NV1")
     if selected_vehicle not in vehicles:
         selected_vehicle = vehicles[0] if vehicles else ""
-    active_version = db.get_active_bom_version(conn)
-    active_bom_id = active_version["id"] if active_version else None
-    report = db.dashboard_report(conn, active_bom_id, selected_vehicle)
+    report = db.dashboard_report(conn, display_bom_id, selected_vehicle)
     conn.close()
 
     wb = Workbook()
     ws = wb.active
     ws.title = "재료비 Summary"
     overseas = report["overseas_countries"]
+    FONT_NAME = "현대하모니 L"
+    HEADER_FILL = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+    THIN_BOTTOM = Border(bottom=Side(style="thin"))
     bold_center = Alignment(horizontal="center", vertical="center")
+    header_font = Font(name=FONT_NAME, bold=True)
+    data_font = Font(name=FONT_NAME)
 
-    title = f"▶ {selected_vehicle} 재료비 (국내" + "".join(f"/{c}" for c in overseas) + ")"
+    def style_header(cell):
+        cell.font = header_font
+        cell.fill = HEADER_FILL
+        cell.alignment = bold_center
+        cell.border = THIN_BOTTOM
+
+    title = f"▶ {selected_vehicle} 공조/열관리 시스템 재료비 (국내" + "".join(f"/{c}" for c in overseas) + ")"
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=6 + len(overseas) * 6)
-    ws.cell(row=1, column=1, value=title).font = Font(bold=True)
+    ws.cell(row=1, column=1, value=title).font = Font(name=FONT_NAME, size=14, bold=True)
 
     header_row, sub_row = 3, 4
     ws.merge_cells(start_row=header_row, start_column=1, end_row=sub_row, end_column=1)
-    ws.cell(row=header_row, column=1, value="대분류").alignment = bold_center
+    style_header(ws.cell(row=header_row, column=1, value="대분류"))
     ws.merge_cells(start_row=header_row, start_column=2, end_row=sub_row, end_column=2)
-    ws.cell(row=header_row, column=2, value="구분").alignment = bold_center
+    style_header(ws.cell(row=header_row, column=2, value="구분"))
 
     col = 3
     ws.merge_cells(start_row=header_row, start_column=col, end_row=header_row, end_column=col + 3)
-    ws.cell(row=header_row, column=col, value="내수").alignment = bold_center
+    style_header(ws.cell(row=header_row, column=col, value="내수"))
     for label in ("재료비", "물류비", "관세", "합계"):
-        ws.cell(row=sub_row, column=col, value=label).alignment = bold_center
+        style_header(ws.cell(row=sub_row, column=col, value=label))
         col += 1
 
     country_start_cols = {}
     for country in overseas:
         country_start_cols[country] = col
         ws.merge_cells(start_row=header_row, start_column=col, end_row=header_row, end_column=col + 5)
-        ws.cell(row=header_row, column=col, value=country).alignment = bold_center
+        style_header(ws.cell(row=header_row, column=col, value=country))
         ws.merge_cells(start_row=sub_row, start_column=col, end_row=sub_row, end_column=col + 2)
-        ws.cell(row=sub_row, column=col, value="재료비(LP/KD)").alignment = bold_center
-        ws.cell(row=sub_row + 1, column=col, value="LP").alignment = bold_center
-        ws.cell(row=sub_row + 1, column=col + 1, value="KD").alignment = bold_center
-        ws.cell(row=sub_row + 1, column=col + 2, value="합계").alignment = bold_center
+        style_header(ws.cell(row=sub_row, column=col, value="재료비(LP/KD)"))
+        style_header(ws.cell(row=sub_row + 1, column=col, value="LP"))
+        style_header(ws.cell(row=sub_row + 1, column=col + 1, value="KD"))
+        style_header(ws.cell(row=sub_row + 1, column=col + 2, value="합계"))
         for offset, label in enumerate(("물류비", "관세", "합계"), start=3):
-            ws.cell(row=sub_row, column=col + offset, value=label).alignment = bold_center
+            style_header(ws.cell(row=sub_row, column=col + offset, value=label))
         col += 6
 
     row = sub_row + 2
-    for major in report["majors"]:
+    for major_idx, major in enumerate(report["majors"]):
         first_row = row
+        band_fill = HEADER_FILL if major_idx % 2 == 0 else None
         for cat in major["categories"]:
-            ws.cell(row=row, column=2, value=cat["category"])
             d = cat["domestic"]
-            ws.cell(row=row, column=3, value=d["material"])
-            ws.cell(row=row, column=4, value=d["logistics"])
-            ws.cell(row=row, column=5, value=d["tariff"])
-            ws.cell(row=row, column=6, value=d["total"])
+            values = {2: cat["category"], 3: d["material"], 4: d["logistics"], 5: d["tariff"], 6: d["total"]}
             for country in overseas:
                 o = cat["overseas"][country]
                 base = country_start_cols[country]
-                ws.cell(row=row, column=base, value=o["material_lp"])
-                ws.cell(row=row, column=base + 1, value=o["material_kd"])
-                ws.cell(row=row, column=base + 2, value=o["material_total"])
-                ws.cell(row=row, column=base + 3, value=o["logistics"])
-                ws.cell(row=row, column=base + 4, value=o["tariff"])
-                ws.cell(row=row, column=base + 5, value=o["total"])
+                values.update({base: o["material_lp"], base + 1: o["material_kd"], base + 2: o["material_total"], base + 3: o["logistics"], base + 4: o["tariff"], base + 5: o["total"]})
+            for column, value in values.items():
+                cell = ws.cell(row=row, column=column, value=value)
+                cell.font = data_font
+                if column > 2:
+                    cell.alignment = Alignment(horizontal="right")
+                if band_fill:
+                    cell.fill = band_fill
             row += 1
         if row - 1 > first_row:
             ws.merge_cells(start_row=first_row, start_column=1, end_row=row - 1, end_column=1)
-        ws.cell(row=first_row, column=1, value=major["major"]).alignment = bold_center
+        major_cell = ws.cell(row=first_row, column=1, value=major["major"])
+        major_cell.font = header_font
+        major_cell.alignment = bold_center
+        if band_fill:
+            major_cell.fill = band_fill
 
     ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=2)
-    ws.cell(row=row, column=1, value="합 계").alignment = bold_center
+    style_header(ws.cell(row=row, column=1, value="합 계"))
     gd = report["grand_domestic"]
-    ws.cell(row=row, column=3, value=gd["material"])
-    ws.cell(row=row, column=4, value=gd["logistics"])
-    ws.cell(row=row, column=5, value=gd["tariff"])
-    ws.cell(row=row, column=6, value=gd["total"])
+    totals = {3: gd["material"], 4: gd["logistics"], 5: gd["tariff"], 6: gd["total"]}
     for country in overseas:
         go = report["grand_overseas"][country]
         base = country_start_cols[country]
-        ws.cell(row=row, column=base, value=go["material_lp"])
-        ws.cell(row=row, column=base + 1, value=go["material_kd"])
-        ws.cell(row=row, column=base + 2, value=go["material_total"])
-        ws.cell(row=row, column=base + 3, value=go["logistics"])
-        ws.cell(row=row, column=base + 4, value=go["tariff"])
-        ws.cell(row=row, column=base + 5, value=go["total"])
+        totals.update({base: go["material_lp"], base + 1: go["material_kd"], base + 2: go["material_total"], base + 3: go["logistics"], base + 4: go["tariff"], base + 5: go["total"]})
+    for column, value in totals.items():
+        style_header(ws.cell(row=row, column=column, value=value))
 
     buffer = io.BytesIO()
     wb.save(buffer)
