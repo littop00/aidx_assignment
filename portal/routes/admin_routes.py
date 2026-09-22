@@ -379,5 +379,8 @@ def confirm_rows():
             fields.update({name: values.get(name) for name in extra})
             db.upsert_purchase(conn, values["part_no"], values["row_num"], values["country"], fields, updated_by=current_user.username, bom_id=active["id"])
         confirmed += 1
+    locked = False
+    if request.form.get("all") == "1":
+        locked = db.confirm_bom_version(conn, active["id"])
     conn.close()
-    return jsonify({"ok": True, "confirmed": confirmed, "skipped": len(row_nums) - confirmed})
+    return jsonify({"ok": True, "confirmed": confirmed, "skipped": len(row_nums) - confirmed, "locked": locked})

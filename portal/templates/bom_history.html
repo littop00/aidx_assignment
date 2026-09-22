@@ -1,0 +1,72 @@
+{% extends "base_new.html" %}
+{% block title %}BOM 이력 | TMS Portal{% endblock %}
+{% block page_title %}BOM 이력{% endblock %}
+{% block content %}
+<div class="bg-white rounded-2xl p-4 shadow-sm border-none mb-4">
+    <h1 class="text-xl font-bold text-[#1B2559]">BOM 이력</h1>
+    <p class="text-sm text-[#A3AED0] mt-1">지금까지 배포된 BOM 버전 목록입니다. 확정된 버전은 더 이상 수정할 수 없으며, 과거 버전은 읽기 전용으로 조회할 수 있습니다.</p>
+</div>
+<form method="get" class="bg-white rounded-2xl p-4 shadow-sm border-none mb-4 flex flex-wrap items-end gap-3">
+    <div>
+        <label class="text-xs text-[#A3AED0] block mb-1">상태</label>
+        <select name="status" class="select select-bordered select-sm rounded-xl">
+            <option value="" {% if not status %}selected{% endif %}>전체</option>
+            <option value="active" {% if status == 'active' %}selected{% endif %}>사용중</option>
+            <option value="confirmed" {% if status == 'confirmed' %}selected{% endif %}>확정됨</option>
+        </select>
+    </div>
+    <div>
+        <label class="text-xs text-[#A3AED0] block mb-1">확정일(부터)</label>
+        <input type="date" name="date_from" value="{{ date_from }}" class="input input-bordered input-sm rounded-xl">
+    </div>
+    <div>
+        <label class="text-xs text-[#A3AED0] block mb-1">확정일(까지)</label>
+        <input type="date" name="date_to" value="{{ date_to }}" class="input input-bordered input-sm rounded-xl">
+    </div>
+    <div class="flex-1 min-w-[160px]">
+        <label class="text-xs text-[#A3AED0] block mb-1">검색 (버전명/차종)</label>
+        <input type="text" name="search" value="{{ search }}" placeholder="예: NE2_NV1" class="input input-bordered input-sm rounded-xl w-full">
+    </div>
+    <label class="flex items-center gap-2 text-sm text-[#1B2559] mb-1"><input type="checkbox" name="show_unconfirmed" value="1" class="checkbox checkbox-sm checkbox-primary" {% if show_unconfirmed %}checked{% endif %}> 미확정(보관) 이력도 표시</label>
+    <button type="submit" class="btn btn-sm btn-primary rounded-xl">검색</button>
+    <a href="{{ url_for('bom.history') }}" class="btn btn-sm btn-ghost rounded-xl">초기화</a>
+</form>
+<div class="bg-white rounded-2xl shadow-sm border-none overflow-auto">
+    <table class="table table-zebra align-middle text-[#1B2559]">
+        <thead>
+            <tr class="text-[#A3AED0] uppercase text-xs tracking-wider bg-gray-50">
+                <th class="text-center">버전명</th>
+                <th class="text-center">차종</th>
+                <th class="text-center">Rev</th>
+                <th class="text-center">배포일</th>
+                <th class="text-center">확정일</th>
+                <th class="text-center">상태</th>
+                <th class="text-center">조회</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for v in versions %}
+            <tr>
+                <td class="text-center">{{ v.name }}</td>
+                <td class="text-center">{{ v.vehicle or '-' }}</td>
+                <td class="text-center">Rev.{{ v.version_no }}</td>
+                <td class="text-center">{{ v.published_at or '-' }}</td>
+                <td class="text-center">{{ v.confirmed_at or '-' }}</td>
+                <td class="text-center">
+                    {% if v.is_active %}
+                    <span class="badge badge-lg rounded-lg font-semibold px-3 py-1 border-none bg-emerald-50 text-emerald-600">사용중</span>
+                    {% elif v.is_confirmed %}
+                    <span class="badge badge-lg rounded-lg font-semibold px-3 py-1 border-none bg-blue-50 text-blue-600">확정됨</span>
+                    {% else %}
+                    <span class="badge badge-lg rounded-lg font-semibold px-3 py-1 border-none bg-gray-100 text-[#A3AED0]">미확정(보관)</span>
+                    {% endif %}
+                </td>
+                <td class="text-center"><a href="{{ url_for('bom.index', version_id=v.id) }}" class="btn btn-ghost btn-sm rounded-xl">조회</a></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="text-center text-[#A3AED0] py-5">조건에 맞는 BOM 이력이 없습니다.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
