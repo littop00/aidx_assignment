@@ -1,58 +1,52 @@
 {% extends "base_new.html" %}
-{% block title %}내 담당 품목 | TMS Portal{% endblock %}
-{% block page_title %}내 담당 품목{% endblock %}
+{% block title %}담당 품목 관리 | TMS Portal{% endblock %}
+{% block page_title %}담당 품목 관리{% endblock %}
 {% block content %}
-{% if submission and submission.status == 'auto_submitted' %}<div class="bg-amber-50 border border-amber-200 text-amber-700 rounded-2xl shadow-sm mb-6 flex items-center gap-3 p-4"><i class="bi bi-exclamation-triangle-fill"></i><span class="text-sm font-semibold">마감기한이 지나 입력 내용이 <span class="badge badge-lg rounded-lg font-semibold px-3 py-1 border-none bg-amber-100 text-amber-700">자동제출</span> 처리되었습니다.</span></div>{% endif %}
-{% if active_version and active_version.due_date %}<p class="text-sm text-[#A3AED0] mb-1">마감기한: {{ active_version.due_date.replace('T', ' ') }}</p>{% endif %}
-<p class="text-sm text-[#A3AED0] mb-4">담당할 구분(카테고리)을 직접 선택하면 해당 구분의 모든 품목이 내 담당으로 지정됩니다. 제출 전(작성 중/반려 상태)에만 변경할 수 있습니다.</p>
-<div class="bg-white rounded-2xl p-6 md:p-8 shadow-sm border-none mb-6">
-    <h3 class="text-xl font-bold text-[#1B2559] mb-4">담당 구분 선택</h3>
-    <div class="flex flex-wrap gap-3">
-    {% for category in categories %}<label class="flex items-center gap-2 text-sm text-[#1B2559]"><input type="checkbox" class="checkbox checkbox-sm checkbox-primary category-toggle" data-url="{{ url_for('bom.set_category_membership', category=category) }}" {% if category in my_categories %}checked{% endif %} {% if not can_cancel %}disabled{% endif %}> {{ category }}</label>{% else %}<span class="text-sm text-[#A3AED0]">구분 정보가 없습니다.</span>{% endfor %}
-    </div>
+<div class="bg-white rounded-2xl p-4 shadow-sm border-none mb-4">
+    <h1 class="text-xl font-bold text-[#1B2559]">담당 품목 관리</h1>
+    <p class="text-sm text-[#A3AED0] mt-1">관리자가 지정한 담당 구분의 품목 중 실제로 담당할 품목을 선택해 저장하세요. 저장한 품목만 BOM 입력 화면에 나타납니다.</p>
+    {% if not active_version %}<p class="text-sm text-rose-500 mt-2">현재 사용할 수 있는 BOM이 없습니다.</p>
+    {% elif not my_categories %}<p class="text-sm text-rose-500 mt-2">관리자가 아직 담당 구분을 지정하지 않았습니다.</p>
+    {% elif not can_edit %}<p class="text-sm text-amber-600 mt-2">제출된 BOM은 담당 품목을 변경할 수 없습니다.</p>{% endif %}
 </div>
-<p class="text-sm text-[#A3AED0] mb-4">아래는 담당 구분 및 개별 지정으로 확보된 품목 목록입니다.</p>
-<div class="bg-white rounded-2xl p-6 md:p-8 shadow-sm border-none overflow-x-auto">
-<table class="table table-zebra w-full text-[#1B2559] text-sm">
-<thead><tr class="bg-transparent border-b border-base-content/10"><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-left">차종</th><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-left">구분</th><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-left">품번</th><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-left">품명</th><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-center"></th></tr></thead>
-<tbody id="my-assignments-body">
-{% for part in parts %}<tr class="border-b border-base-content/5 hover:bg-base-100/50" data-row-num="{{ part.row_num }}"><td class="text-left text-sm font-medium">{{ part.vehicle or '-' }}</td><td class="text-left text-sm font-medium">{{ part.category or '-' }}</td><td class="text-left text-sm font-medium">{{ part.part_no }}</td><td class="text-left text-sm font-medium">{{ part.part_name }}</td><td class="text-center">{% if can_cancel %}<button type="button" class="btn btn-ghost btn-sm rounded-xl cancel-assignment-btn" data-url="{{ url_for('bom.set_assignment', row_num=part.row_num) }}">취소</button>{% else %}<span class="text-sm text-[#A3AED0]">제출됨</span>{% endif %}</td></tr>
-{% else %}<tr><td colspan="5" class="text-center text-[#A3AED0] py-5">담당으로 선택한 품목이 없습니다.</td></tr>{% endfor %}
-</tbody>
-</table>
-</div>
+{% if active_version and my_categories %}
+<div class="flex flex-col lg:flex-row lg:items-center lg:justify-between bg-white rounded-2xl p-4 shadow-sm border-none mb-4 gap-4 filter-bar"><form id="filter-form" class="filter-form" hx-get="{{ url_for('bom.assignment_grid') }}" hx-target="#grid-container" hx-trigger="change, submit"><div class="filter-group"><label class="text-xs font-medium text-[#A3AED0] mb-1 block">입력 상태</label><select name="status" class="select select-bordered select-sm rounded-xl bg-base-100 border-base-300"><option value="all">전체</option><option value="done">입력 완료</option><option value="missing">미입력만 보기</option></select></div><div class="filter-group"><label class="text-xs font-medium text-[#A3AED0] mb-1 block">페이지 행 수</label><select name="page_size" class="select select-bordered select-sm rounded-xl bg-base-100 border-base-300">{% for size in [10,20,30,50] %}<option value="{{ size }}" {% if size == 20 %}selected{% endif %}>{{ size }}행</option>{% endfor %}</select></div><div class="filter-group filter-search"><label class="text-xs font-medium text-[#A3AED0] mb-1 block">검색</label><div class="search-input-group"><input type="text" name="search" class="input input-bordered input-sm rounded-xl bg-base-100 border-base-300 focus:border-primary focus:outline-none transition-all" placeholder="품번 / 품명 / 구분 검색" hx-get="{{ url_for('bom.assignment_grid') }}" hx-target="#grid-container" hx-trigger="keyup changed delay:400ms"><button type="submit" class="btn btn-primary btn-sm rounded-xl" aria-label="검색"><i class="bi bi-search"></i></button></div></div></form></div>
+<div id="grid-container" hx-get="{{ url_for('bom.assignment_grid') }}" hx-trigger="load" hx-include="#filter-form"><div class="grid-loading"><i class="bi bi-hourglass-split"></i> 불러오는 중…</div></div>
+{% endif %}
 <script>
-document.addEventListener('change', async (event) => {
-  const checkbox = event.target.closest('.category-toggle');
-  if (!checkbox) return;
-  checkbox.disabled = true;
-  try {
-    const response = await fetch(checkbox.dataset.url, {method: 'POST', headers: {'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded'}, body: `member=${checkbox.checked ? '1' : '0'}`});
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload.message || '변경에 실패했습니다.');
-  } catch (error) {
-    alert(error.message);
-    checkbox.checked = !checkbox.checked;
-  } finally {
-    checkbox.disabled = false;
+function refreshAssignmentAccess() {
+  const saveButton = document.getElementById('save-assignments-btn');
+  if (!saveButton) return;
+  saveButton.disabled = ![...document.querySelectorAll('.assignment-toggle')].some((checkbox) => checkbox.checked !== (checkbox.dataset.saved === 'true'));
+}
+document.addEventListener('htmx:afterSwap', refreshAssignmentAccess);
+document.addEventListener('change', (event) => {
+  if (event.target.id === 'select-all') {
+    document.querySelectorAll('.assignment-toggle:not(:disabled)').forEach((checkbox) => { checkbox.checked = event.target.checked; });
+    refreshAssignmentAccess();
+    return;
   }
+  if (event.target.matches('.assignment-toggle')) refreshAssignmentAccess();
 });
 document.addEventListener('click', async (event) => {
-  const button = event.target.closest('.cancel-assignment-btn');
+  const button = event.target.closest('#save-assignments-btn');
   if (!button) return;
-  if (!confirm('이 품목의 담당 지정을 취소하시겠습니까?')) return;
+  const changed = [...document.querySelectorAll('.assignment-toggle')].filter((checkbox) => checkbox.checked !== (checkbox.dataset.saved === 'true'));
+  if (!changed.length) return;
   button.disabled = true;
   try {
-    const response = await fetch(button.dataset.url, {method: 'POST', headers: {'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded'}, body: 'assigned=0'});
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload.message || '취소에 실패했습니다.');
-    button.closest('tr').remove();
-    if (!document.querySelector('#my-assignments-body tr[data-row-num]')) {
-      document.getElementById('my-assignments-body').innerHTML = '<tr><td colspan="5" class="text-center text-[#A3AED0] py-5">담당으로 선택한 품목이 없습니다.</td></tr>';
-    }
+    await Promise.all(changed.map(async (checkbox) => {
+      const response = await fetch(checkbox.dataset.url, {method: 'POST', headers: {'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded'}, body: new URLSearchParams({assigned: checkbox.checked ? '1' : '0'})});
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.message || '담당 품목 저장에 실패했습니다.');
+      return payload;
+    }));
+    changed.forEach((checkbox) => { checkbox.dataset.saved = checkbox.checked ? 'true' : 'false'; });
+    alert(`담당 품목 ${changed.length}건을 저장했습니다.`);
+    htmx.trigger(document.getElementById('filter-form'), 'change');
   } catch (error) {
     alert(error.message);
-    button.disabled = false;
+    refreshAssignmentAccess();
   }
 });
 </script>

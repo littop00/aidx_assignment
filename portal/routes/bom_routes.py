@@ -64,10 +64,10 @@ def _filtered_rows(conn, countries, status, search, categories=None, user_id=Non
     keyword = (search or "").strip().lower()
     categories = set(categories) if categories else None
     active = db.get_bom_version(conn, bom_id) if bom_id else db.get_active_bom_version(conn)
-    assigned_keys = db.assigned_part_keys(conn, active["id"], user_id) if active and user_id is not None else set()
+    explicit_keys = db.explicit_assigned_part_keys(conn, active["id"], user_id) if active and user_id is not None else set()
     rows = []
     for p in parts:
-        is_assigned = (p["part_no"], p["row_num"]) in assigned_keys
+        is_assigned = (p["part_no"], p["row_num"]) in explicit_keys
         if assigned_only and not is_assigned:
             continue
         if categories and p.get("category") not in categories:
@@ -92,7 +92,7 @@ def _filtered_rows(conn, countries, status, search, categories=None, user_id=Non
             if (m["part_no"], m["row_num"]) != (p["part_no"], p["row_num"])
         ]
         row["mip"] = any((row["country_data"].get(c, {}).get("sourcing_part") or "") == "MIP" for c in countries) if "country_data" in row else False
-        row["assigned"] = is_assigned
+        row["assigned"] = (p["part_no"], p["row_num"]) in explicit_keys
         row["country_data"] = {
             country: _build_row_view(p, db.get_user_purchase(conn, p["part_no"], p["row_num"], country, effective_user_id, bom_id) if effective_user_id else db.get_purchase(conn, p["part_no"], p["row_num"], country, bom_id))
             for country in countries
@@ -228,7 +228,7 @@ def grid():
 
     submission = db.get_or_create_submission(conn, target_version["id"], int(current_user.id)) if target_version else None
     configured_countries = [country for country in db.list_bom_countries(conn, target_version["id"] if target_version else None) if country != "한국"]
-    if current_user.role != "admin" or not selected_countries:
+    if current_user.role != "admin":
         selected_countries = configured_countries
     display_countries = ["한국"] + selected_countries
     input_user_id = None if current_user.role == "admin" else int(current_user.id)
@@ -267,7 +267,7 @@ def grid():
         can_manage_countries=current_user.role == "admin" and not viewing_history,
         is_admin=current_user.role == "admin",
         can_edit=False if viewing_history else (True if current_user.role == "admin" else (scope == "my_bom" and submission and submission["status"] in ("draft", "returned"))),
-        assignment_enabled=False if viewing_history else (current_user.role != "admin" and scope == "my_bom"),
+        show_reset_button=False if viewing_history else (current_user.role != "admin" and scope == "my_bom"),
         show_group_button=False if viewing_history else (current_user.role == "admin" or scope == "my_bom"),
         show_confirm_button=False if viewing_history else (current_user.role == "admin"),
         assigned_only=assigned_only,
@@ -330,7 +330,7 @@ def save_row(row_num, country, part_no=None):
     if current_user.role != "admin" and submission["status"] not in ("draft", "returned"):
         conn.close()
         return jsonify({"error": "제출된 BOM은 관리자 검토 전까지 수정할 수 없습니다."}), 403
-    if current_user.role != "admin" and (part_no, row_num) not in db.assigned_part_keys(conn, active_version["id"], int(current_user.id)):
+    if current_user.role != "admin" and (part_no, row_num) not in db.explicit_assigned_part_keys(conn, active_version["id"], int(current_user.id)):
         conn.close()
         return jsonify({"error": "먼저 이 품목을 내 담당 품목으로 선택해 주세요."}), 403
     group = db.group_for_part(conn, active_version["id"], part_no, row_num)
@@ -437,7 +437,7 @@ def set_assignment(row_num, part_no=None):
         return jsonify({"ok": False, "message": "제출된 BOM은 담당 품목을 변경할 수 없습니다."}), 403
     assigned = request.form.get("assigned") in ("1", "true", "on")
     db.set_part_assignment(conn, active["id"], int(current_user.id), part_no, row_num, assigned)
-    count = len(db.assigned_part_keys(conn, active["id"], int(current_user.id)))
+    count = len(db.explicit_assigned_part_keys(conn, active["id"], int(current_user.id)))
     conn.close()
     return jsonify({"ok": True, "assigned": assigned, "count": count})
 
@@ -449,12 +449,49 @@ def my_assignments():
     conn = db.get_connection(current_app.config["DB_PATH"])
     active = db.get_active_bom_version(conn)
     submission = db.get_or_create_submission(conn, active["id"], int(current_user.id)) if active else None
-    parts = db.list_current_assignments(conn, active["id"], int(current_user.id)) if active else []
-    categories = db.list_categories(conn, active["id"]) if active else []
     my_categories = db.get_user_categories(conn, active["id"], int(current_user.id)) if active else set()
     conn.close()
-    can_cancel = bool(submission) and submission["status"] in ("draft", "returned")
-    return render_template("my_assignments.html", parts=parts, submission=submission, can_cancel=can_cancel, active_version=active, categories=categories, my_categories=my_categories)
+    can_edit = bool(submission) and submission["status"] in ("draft", "returned")
+    return render_template("my_assignments.html", submission=submission, active_version=active, my_categories=my_categories, can_edit=can_edit)
+
+@bom_bp.route("/assignments/grid")
+@login_required
+def assignment_grid():
+    if current_user.role == "admin":
+        abort(404)
+    status = request.args.get("status", "all")
+    search = request.args.get("search", "")
+    page = int(request.args.get("page", 1))
+    page_size = int(request.args.get("page_size", PAGE_SIZE))
+    if page_size not in PAGE_SIZE_OPTIONS:
+        page_size = PAGE_SIZE
+
+    conn = db.get_connection(current_app.config["DB_PATH"])
+    active = db.get_active_bom_version(conn)
+    my_categories = db.get_user_categories(conn, active["id"], int(current_user.id)) if active else set()
+    submission = db.get_or_create_submission(conn, active["id"], int(current_user.id)) if active else None
+    can_edit = bool(submission) and submission["status"] in ("draft", "returned")
+    all_rows = _filtered_rows(conn, ["한국"], status, search, my_categories, int(current_user.id), bom_id=active["id"]) if active and my_categories else []
+    conn.close()
+
+    total = len(all_rows)
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    page = max(1, min(page, total_pages))
+    start = (page - 1) * page_size
+    page_rows = all_rows[start:start + page_size]
+
+    window_size = 5
+    window_start = max(1, page - window_size // 2)
+    window_end = min(total_pages, window_start + window_size - 1)
+    window_start = max(1, window_end - window_size + 1)
+
+    return render_template(
+        "partials/_assignment_grid.html",
+        rows=page_rows, page=page, total_pages=total_pages, total=total,
+        page_size=page_size, page_size_options=PAGE_SIZE_OPTIONS,
+        window_start=window_start, window_end=window_end,
+        can_edit=can_edit,
+    )
 
 @bom_bp.route("/categories/<category>", methods=["POST"])
 @login_required
