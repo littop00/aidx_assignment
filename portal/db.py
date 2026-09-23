@@ -803,6 +803,7 @@ def add_manual_part(conn, bom_id, anchor_part_no, anchor_row_num, position, fiel
     return get_part(conn, part_no, insert_at, bom_id)
 
 def list_assigned_parts(conn, bom_id, user_id):
+    """2차 상세지정된(explicit) 품목만 반환 - 제출 필수 항목/제출 스냅샷 기준."""
     rows = conn.execute("""
         SELECT p.* FROM bom_parts p
         WHERE p.bom_id = ? AND (
@@ -810,11 +811,9 @@ def list_assigned_parts(conn, bom_id, user_id):
                     WHERE a.bom_id=p.bom_id AND a.user_id=? AND a.part_no=p.part_no AND a.row_num=p.row_num)
             OR EXISTS (SELECT 1 FROM bom_user_purchase_data u
                        WHERE u.bom_id=p.bom_id AND u.user_id=? AND u.part_no=p.part_no AND u.row_num=p.row_num)
-            OR EXISTS (SELECT 1 FROM bom_category_members m
-                       WHERE m.bom_id=p.bom_id AND m.user_id=? AND m.category=p.category)
         )
         ORDER BY p.row_num
-    """, (bom_id, user_id, user_id, user_id)).fetchall()
+    """, (bom_id, user_id, user_id)).fetchall()
     return [dict(r) for r in rows]
 
 def list_current_assignments(conn, bom_id, user_id):
@@ -836,6 +835,15 @@ def assigned_part_keys(conn, bom_id, user_id):
         JOIN bom_category_members m ON m.bom_id=p.bom_id AND m.category=p.category
         WHERE p.bom_id=? AND m.user_id=?
     """, (bom_id, user_id, bom_id, user_id, bom_id, user_id)).fetchall()
+    return {(row["part_no"], row["row_num"]) for row in rows}
+
+def explicit_assigned_part_keys(conn, bom_id, user_id):
+    """2차 상세지정: 사용자가 직접 체크했거나 실제 원가를 입력한 품목만. 카테고리 소속(1차 POOL)은 제외."""
+    rows = conn.execute("""
+        SELECT part_no, row_num FROM bom_part_assignments WHERE bom_id=? AND user_id=?
+        UNION
+        SELECT part_no, row_num FROM bom_user_purchase_data WHERE bom_id=? AND user_id=?
+    """, (bom_id, user_id, bom_id, user_id)).fetchall()
     return {(row["part_no"], row["row_num"]) for row in rows}
 
 def set_part_assignment(conn, bom_id, user_id, part_no, row_num, assigned):

@@ -1,0 +1,9 @@
+<tr>
+  <td class="text-center"><input type="checkbox" class="checkbox checkbox-sm checkbox-primary assignment-toggle" data-url="{{ url_for('bom.set_assignment', row_num=row.row_num) }}" data-row-num="{{ row.row_num }}" data-saved="{{ 'true' if row.assigned else 'false' }}" {% if row.assigned %}checked{% endif %} {% if not can_edit %}disabled{% endif %}></td>
+  <td class="text-left">{{ row.vehicle }}</td>
+  <td class="text-left">{{ row.category }}</td>
+  <td class="text-left">{{ row.part_no }}</td>
+  <td class="part-name-cell text-left"><span class="level-indent level-{{ row.level_depth }}{% if row.is_group_parent %} group-line-parent{% elif row.group_child %} group-line{% endif %}"></span>{{ row.part_name }}{% if row.is_group_parent %}<span class="badge group-badge" title="{% for m in row.group_members %}{{ m.part_no }} {{ m.part_name }}{% if not loop.last %}&#10;{% endif %}{% endfor %}">그룹 상위 ({{ row.group_members|length }})</span>{% elif row.group_child %}<span class="badge group-badge-child" title="상위 {{ row.group.parent_part_no }}&#10;담당 {{ row.group.owner_name }}">그룹 하위</span>{% endif %}</td>
+  <td class="text-right">{{ row.qty }}</td>
+  <td class="text-center">{% if row.assigned %}<span class="badge badge-sm bg-emerald-50 text-emerald-600 border-none">담당 확정</span>{% else %}<span class="badge badge-sm bg-gray-100 text-[#A3AED0] border-none">미확정</span>{% endif %}</td>
+</tr>
