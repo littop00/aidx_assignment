@@ -13,6 +13,7 @@ from routes.home_routes import home_bp
 from routes.bom_routes import bom_bp
 from routes.fx_routes import fx_bp
 from routes.admin_routes import admin_bp
+from routes.bid_bom_routes import bid_bom_bp
 
 
 def create_app(db_path=None):
@@ -30,6 +31,7 @@ def create_app(db_path=None):
     app.register_blueprint(bom_bp)
     app.register_blueprint(fx_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(bid_bom_bp)
 
     login_manager = LoginManager()
     login_manager.login_view = "auth.login"
