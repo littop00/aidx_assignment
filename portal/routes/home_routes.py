@@ -47,6 +47,11 @@ def index():
         active_version=active_version,
     )
 
+@home_bp.route("/dashboard/vendors")
+@login_required
+def vendor_dashboard():
+    return render_template("dashboard_vendor_placeholder.html")
+
 @home_bp.route("/export/dashboard.xlsx")
 @login_required
 def export_dashboard():
