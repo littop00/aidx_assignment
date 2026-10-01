@@ -20,6 +20,19 @@ def test_bom_index_requires_login(client):
     assert "/login" in resp.headers["Location"]
 
 
+def test_summary_page_requires_login(client):
+    resp = client.get("/bom/summary-page")
+    assert resp.status_code == 302
+    assert "/login" in resp.headers["Location"]
+
+
+def test_summary_page_embeds_summary_fragment(client, admin_user):
+    _login(client, admin_user)
+    resp = client.get("/bom/summary-page")
+    assert resp.status_code == 200
+    assert b'hx-get="/bom/summary"' in resp.data
+
+
 def test_user_submits_only_selected_assignment(client, app):
     conn = db.get_connection(app.config["DB_PATH"])
     db.create_user(conn, "worker", generate_password_hash("worker-pass"), role="user")

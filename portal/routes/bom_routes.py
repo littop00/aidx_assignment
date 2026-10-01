@@ -315,6 +315,11 @@ def summary():
         grand_tariff=grand["tariff_sum"], grand_total=grand["total_sum"],
     )
 
+@bom_bp.route("/summary-page")
+@login_required
+def summary_page():
+    return render_template("summary.html")
+
 @bom_bp.route("/row/<part_no>/<int:row_num>/<country>", methods=["POST"])
 @bom_bp.route("/row/by-number/<int:row_num>/<country>", methods=["POST"])
 @login_required
