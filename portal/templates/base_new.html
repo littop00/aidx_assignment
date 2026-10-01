@@ -31,19 +31,39 @@
     <nav class="p-4">
       <ul class="menu menu-md w-full gap-1 p-0">
         <li class="menu-title text-[#A3AED0] font-bold text-xs tracking-wider mb-2 px-2">DASHBOARD</li>
-        <li>
-          <a href="{{ url_for('home.index') }}" class="flex items-center gap-3 px-4 py-3 rounded-xl font-medium {% if request.endpoint == 'home.index' %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
-            <i class="bi bi-speedometer2 text-lg"></i> 대시보드
-          </a>
-        </li>
-        <li x-data="{ open: {{ 'true' if request.endpoint in ('bom.index', 'bom.grid', 'bom.summary', 'bom.history') else 'false' }} }">
-          <a href="#" @click.prevent="open = !open" class="flex items-center justify-between gap-3 px-4 py-3 rounded-xl font-medium cursor-pointer {% if request.endpoint in ('bom.index', 'bom.grid', 'bom.summary', 'bom.history') %}text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
-            <span class="flex items-center gap-3"><i class="bi bi-table text-lg"></i> BOM 조회/관리</span>
+        <li x-data="{ open: {{ 'true' if request.endpoint in ('home.index', 'home.vendor_dashboard') else 'false' }} }">
+          <a href="#" @click.prevent="open = !open" class="flex items-center justify-between gap-3 px-4 py-3 rounded-xl font-medium cursor-pointer {% if request.endpoint in ('home.index', 'home.vendor_dashboard') %}text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
+            <span class="flex items-center gap-3"><i class="bi bi-speedometer2 text-lg"></i> 대시보드</span>
             <i class="bi text-xs" :class="open ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
           </a>
           <ul x-show="open" x-cloak class="pl-8 mt-1 flex flex-col gap-1">
             <li>
-              <a href="{{ url_for('bom.index') }}" class="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium {% if request.endpoint in ('bom.index', 'bom.grid', 'bom.summary') and not request.args.get('version_id') %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
+              <a href="{{ url_for('home.index') }}" class="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium {% if request.endpoint == 'home.index' %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
+                차종별 재료비 현황
+              </a>
+            </li>
+            <li>
+              <a href="{{ url_for('home.vendor_dashboard') }}" class="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium {% if request.endpoint == 'home.vendor_dashboard' %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
+                차종별 협력사 현황
+              </a>
+            </li>
+          </ul>
+        </li>
+        <li>
+          <a href="{{ url_for('bom.summary_page') }}" class="flex items-center gap-3 px-4 py-3 rounded-xl font-medium {% if request.endpoint == 'bom.summary_page' %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
+            <i class="bi bi-pie-chart text-lg"></i> 재료비 Summary
+          </a>
+        </li>
+
+        <li class="menu-title text-[#A3AED0] font-bold text-xs tracking-wider mt-4 mb-2 px-2">수주 BOM</li>
+        <li x-data="{ open: {{ 'true' if request.endpoint in ('bom.index', 'bom.grid', 'bom.history') else 'false' }} }">
+          <a href="#" @click.prevent="open = !open" class="flex items-center justify-between gap-3 px-4 py-3 rounded-xl font-medium cursor-pointer {% if request.endpoint in ('bom.index', 'bom.grid', 'bom.history') %}text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
+            <span class="flex items-center gap-3"><i class="bi bi-table text-lg"></i> BOM 조회</span>
+            <i class="bi text-xs" :class="open ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
+          </a>
+          <ul x-show="open" x-cloak class="pl-8 mt-1 flex flex-col gap-1">
+            <li>
+              <a href="{{ url_for('bom.index') }}" class="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium {% if request.endpoint in ('bom.index', 'bom.grid') and not request.args.get('version_id') %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
                 현재 BOM
               </a>
             </li>
@@ -56,10 +76,9 @@
         </li>
 
         {% if current_user.role != 'admin' %}
-        <li class="menu-title text-[#A3AED0] font-bold text-xs tracking-wider mt-4 mb-2 px-2">MANAGEMENT</li>
         <li x-data="{ open: {{ 'true' if request.endpoint in ('bom.my_assignments', 'bom.assignment_grid', 'bom.my_bom') else 'false' }} }">
           <a href="#" @click.prevent="open = !open" class="flex items-center justify-between gap-3 px-4 py-3 rounded-xl font-medium cursor-pointer {% if request.endpoint in ('bom.my_assignments', 'bom.assignment_grid', 'bom.my_bom') %}text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
-            <span class="flex items-center gap-3"><i class="bi bi-pencil-square text-lg"></i> 내 BOM 관리</span>
+            <span class="flex items-center gap-3"><i class="bi bi-pencil-square text-lg"></i> 수주 재료비 입력</span>
             <i class="bi text-xs" :class="open ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
           </a>
           <ul x-show="open" x-cloak class="pl-8 mt-1 flex flex-col gap-1">
@@ -70,7 +89,7 @@
             </li>
             <li>
               <a href="{{ url_for('bom.my_bom') }}" class="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium {% if request.endpoint == 'bom.my_bom' %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
-                담당 BOM 입력
+                BOM 입력
               </a>
             </li>
           </ul>
@@ -81,6 +100,12 @@
           </a>
         </li>
         {% endif %}
+
+        <li>
+          <a href="{{ url_for('bid_bom.index') }}" class="flex items-center gap-3 px-4 py-3 rounded-xl font-medium {% if request.endpoint and request.endpoint.startswith('bid_bom.') %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
+            <i class="bi bi-clipboard2-data text-lg"></i> 입찰 BOM
+          </a>
+        </li>
 
         {% if current_user.role == 'admin' %}
         <li class="menu-title text-[#A3AED0] font-bold text-xs tracking-wider mt-4 mb-2 px-2">ADMINISTRATION</li>
