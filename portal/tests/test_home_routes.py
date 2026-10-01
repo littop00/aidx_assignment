@@ -39,6 +39,19 @@ def test_home_shows_vehicle_country_summary(client, admin_user, app):
     assert b"NE2_NV1" in resp.data
 
 
+def test_vendor_dashboard_requires_login(client):
+    resp = client.get("/dashboard/vendors")
+    assert resp.status_code == 302
+    assert "/login" in resp.headers["Location"]
+
+
+def test_vendor_dashboard_shows_placeholder(client, admin_user):
+    _login(client, admin_user)
+    resp = client.get("/dashboard/vendors")
+    assert resp.status_code == 200
+    assert "준비중".encode() in resp.data
+
+
 def test_upload_requires_login(client):
     fixture = make_bom_fixture([{"part_no": "P001", "part_name": "FILTER", "qty": 2}])
     resp = client.post(
