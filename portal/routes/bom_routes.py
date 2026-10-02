@@ -5,7 +5,6 @@ from flask_login import login_required, current_user
 import db
 import calc
 from columns import COUNTRIES, DESIGN_FIELDS, DESIGN_FIELD_LABELS
-from categories import major_of
 
 bom_bp = Blueprint("bom", __name__, url_prefix="/bom")
 
@@ -59,23 +58,12 @@ def _build_row_view(part, purchase):
     row["note"] = purchase.get("note") or ""
     return row
 
-def _category_tree(categories):
-    """Group flat sub-category list into [{major, categories}] using categories.major_of()."""
-    tree = {}
-    order = []
-    for c in categories:
-        major = major_of(c)
-        if major not in tree:
-            tree[major] = []
-            order.append(major)
-        tree[major].append(c)
-    return [{"major": m, "categories": tree[m]} for m in order]
-
-def _filtered_rows(conn, countries, status, search, categories=None, user_id=None, assigned_only=False, bom_id=None, group_only=False):
+def _filtered_rows(conn, countries, status, search, categories=None, user_id=None, assigned_only=False, bom_id=None, group_only=False, sub_categories=None):
     primary_country = countries[0]
     parts = db.list_parts(conn, bom_id)
     keyword = (search or "").strip().lower()
     categories = set(categories) if categories else None
+    sub_categories = set(sub_categories) if sub_categories else None
     active = db.get_bom_version(conn, bom_id) if bom_id else db.get_active_bom_version(conn)
     explicit_keys = db.explicit_assigned_part_keys(conn, active["id"], user_id) if active and user_id is not None else set()
     rows = []
@@ -84,6 +72,8 @@ def _filtered_rows(conn, countries, status, search, categories=None, user_id=Non
         if assigned_only and not is_assigned:
             continue
         if categories and p.get("category") not in categories:
+            continue
+        if sub_categories and p.get("sub_category") not in sub_categories:
             continue
         if keyword and not any(
             keyword in (p.get(field) or "").lower()
@@ -148,9 +138,12 @@ def index():
     conn.close()
     category_counts = Counter(p["category"] for p in parts if p.get("category"))
     categories = sorted(category_counts)
+    sub_category_counts = Counter(p["sub_category"] for p in parts if p.get("sub_category"))
+    sub_categories = sorted(sub_category_counts)
     return render_template(
         "bom.html", countries=COUNTRIES, overseas_countries=overseas_countries, suggestions=suggestions,
-        categories=categories, category_counts=category_counts, category_tree=_category_tree(categories),
+        categories=categories, category_counts=category_counts,
+        sub_categories=sub_categories, sub_category_counts=sub_category_counts,
         latest_bom_upload=latest_bom_upload, active_version=view_version, submission=submission,
         can_edit=(not viewing_history) and current_user.role != "admin" and (submission and submission["status"] in ("draft", "returned")),
         progress=progress,
@@ -207,9 +200,12 @@ def my_bom():
     conn.close()
     category_counts = Counter(p["category"] for p in parts if p.get("category"))
     categories = sorted(category_counts)
+    sub_category_counts = Counter(p["sub_category"] for p in parts if p.get("sub_category"))
+    sub_categories = sorted(sub_category_counts)
     return render_template(
         "my_bom.html", countries=COUNTRIES, suggestions=suggestions,
-        categories=categories, category_counts=category_counts, category_tree=_category_tree(categories),
+        categories=categories, category_counts=category_counts,
+        sub_categories=sub_categories, sub_category_counts=sub_category_counts,
         active_version=active_version, submission=submission,
         can_edit=bool(submission and submission["status"] in ("draft", "returned")),
         progress=progress,
@@ -223,6 +219,7 @@ def grid():
     status = request.args.get("status", "all")
     search = request.args.get("search", "")
     categories = request.args.getlist("category")
+    sub_categories = request.args.getlist("sub_category")
     assigned_only = request.args.get("assigned") == "1"
     group_only = request.args.get("group_only") == "1"
     scope = request.args.get("scope")
@@ -249,7 +246,7 @@ def grid():
         selected_countries = configured_countries
     display_countries = ["한국"] + selected_countries
     input_user_id = None if current_user.role == "admin" else int(current_user.id)
-    all_rows = _filtered_rows(conn, display_countries, status, search, categories, input_user_id, assigned_only, bom_id=target_version["id"] if target_version else None, group_only=group_only)
+    all_rows = _filtered_rows(conn, display_countries, status, search, categories, input_user_id, assigned_only, bom_id=target_version["id"] if target_version else None, group_only=group_only, sub_categories=sub_categories)
     overseas_countries = db.list_overseas_countries(conn)
     conn.close()
 

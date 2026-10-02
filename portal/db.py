@@ -902,9 +902,10 @@ def category_owner(conn, bom_id, category):
 
 def group_for_part(conn, bom_id, part_no, row_num):
     row = conn.execute("""
-        SELECT g.*, u.username AS owner_name FROM bom_part_group_members m
+        SELECT g.*, u.username AS owner_name, p.part_name AS parent_part_name FROM bom_part_group_members m
         JOIN bom_part_groups g ON g.bom_id=m.bom_id AND g.parent_part_no=m.parent_part_no AND g.parent_row_num=m.parent_row_num
         JOIN users u ON u.id=g.owner_user_id
+        JOIN bom_parts p ON p.bom_id=g.bom_id AND p.part_no=g.parent_part_no AND p.row_num=g.parent_row_num
         WHERE m.bom_id=? AND m.part_no=? AND m.row_num=?
     """, (bom_id, part_no, row_num)).fetchone()
     return dict(row) if row else None
