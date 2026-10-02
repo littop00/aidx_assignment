@@ -1,10 +1,10 @@
 from collections import Counter
 
-from flask import Blueprint, render_template, request, current_app, jsonify, redirect, url_for
+from flask import Blueprint, render_template, request, current_app, jsonify, redirect, url_for, abort
 from flask_login import login_required, current_user
 import db
 import calc
-from columns import COUNTRIES, DESIGN_FIELDS
+from columns import COUNTRIES, DESIGN_FIELDS, DESIGN_FIELD_LABELS
 
 bom_bp = Blueprint("bom", __name__, url_prefix="/bom")
 
@@ -31,6 +31,7 @@ def _build_row_view(part, purchase):
         "level_marker": part.get("level_marker") or "",
         "category": part.get("category") or "",
         "qty": _to_float(part.get("qty")),
+        "manual_row": bool(part.get("manual_row")),
         "status_done": has_price,
         "currency": purchase.get("currency") or "KRW",
         "unit_price_material": purchase.get("unit_price_material") or "",
@@ -48,37 +49,47 @@ def _build_row_view(part, purchase):
     # source value itself is not meaningful in the portal; a dot preserves
     # hierarchy without showing the old numeric "1" marker.
     row["level_slots"] = ["●" if index == row["level_depth"] else "" for index in range(7)]
-    row["detail"] = {name: part.get(name) or "" for name, _ in DESIGN_FIELDS if name not in ("part_no", "part_name")}
+    row["detail"] = {name: part.get(name) or "" for name, _ in DESIGN_FIELDS if name not in ("part_no", "part_name", "vehicle", "category", "qty")}
     row["sourcing_part"] = purchase.get("sourcing_part") or ""
     row["sourcing_assembly"] = purchase.get("sourcing_assembly") or ""
     row["sourcing_part_location"] = purchase.get("sourcing_part_location") or ""
     row["sourcing_assembly_location"] = purchase.get("sourcing_assembly_location") or ""
     row["special_fx_rate"] = purchase.get("special_fx_rate") or ""
     row["special_fx_reason"] = purchase.get("special_fx_reason") or ""
+    row["note"] = purchase.get("note") or ""
     return row
 
-def _filtered_rows(conn, countries, status, search, categories=None, user_id=None, assigned_only=False):
+def _filtered_rows(conn, countries, status, search, categories=None, user_id=None, assigned_only=False, bom_id=None, group_only=False, sub_categories=None):
     primary_country = countries[0]
-    parts = db.list_parts(conn)
+    parts = db.list_parts(conn, bom_id)
     keyword = (search or "").strip().lower()
     categories = set(categories) if categories else None
-    active = db.get_active_bom_version(conn)
-    assigned_keys = db.assigned_part_keys(conn, active["id"], user_id) if active and user_id is not None else set()
+    sub_categories = set(sub_categories) if sub_categories else None
+    active = db.get_bom_version(conn, bom_id) if bom_id else db.get_active_bom_version(conn)
+    explicit_keys = db.explicit_assigned_part_keys(conn, active["id"], user_id) if active and user_id is not None else set()
     rows = []
     for p in parts:
-        is_assigned = (p["part_no"], p["row_num"]) in assigned_keys
+        is_assigned = (p["part_no"], p["row_num"]) in explicit_keys
         if assigned_only and not is_assigned:
             continue
         if categories and p.get("category") not in categories:
+            continue
+        if sub_categories and p.get("sub_category") not in sub_categories:
             continue
         if keyword and not any(
             keyword in (p.get(field) or "").lower()
             for field in ("part_no", "part_name", "category")
         ):
             continue
-        purchase = db.get_user_purchase(conn, p["part_no"], p["row_num"], primary_country, user_id) if user_id else db.get_purchase(conn, p["part_no"], p["row_num"], primary_country)
+        owner = db.category_owner(conn, active["id"], p.get("category")) if user_id is None and active else None
+        effective_user_id = user_id if user_id is not None else (owner["id"] if owner else None)
+        purchase = db.get_user_purchase(conn, p["part_no"], p["row_num"], primary_country, effective_user_id, bom_id) if effective_user_id else db.get_purchase(conn, p["part_no"], p["row_num"], primary_country, bom_id)
         row = _build_row_view(p, purchase)
+        row["target_user_id"] = owner["id"] if owner else None
+        row["target_user_name"] = owner["username"] if owner else None
         group = db.group_for_part(conn, active["id"], p["part_no"], p["row_num"]) if active else None
+        if group_only and not group:
+            continue
         row["group"] = group
         row["is_group_parent"] = bool(group and group["parent_part_no"] == p["part_no"] and group["parent_row_num"] == p["row_num"])
         row["group_child"] = bool(group and not row["is_group_parent"])
@@ -87,9 +98,9 @@ def _filtered_rows(conn, countries, status, search, categories=None, user_id=Non
             if (m["part_no"], m["row_num"]) != (p["part_no"], p["row_num"])
         ]
         row["mip"] = any((row["country_data"].get(c, {}).get("sourcing_part") or "") == "MIP" for c in countries) if "country_data" in row else False
-        row["assigned"] = is_assigned
+        row["assigned"] = (p["part_no"], p["row_num"]) in explicit_keys
         row["country_data"] = {
-            country: _build_row_view(p, db.get_user_purchase(conn, p["part_no"], p["row_num"], country, user_id) if user_id else db.get_purchase(conn, p["part_no"], p["row_num"], country))
+            country: _build_row_view(p, db.get_user_purchase(conn, p["part_no"], p["row_num"], country, effective_user_id, bom_id) if effective_user_id else db.get_purchase(conn, p["part_no"], p["row_num"], country, bom_id))
             for country in countries
         }
         row["mip"] = any((row["country_data"][c].get("sourcing_part") or "").upper().startswith("MIP") for c in countries)
@@ -109,20 +120,71 @@ def _filtered_rows(conn, countries, status, search, categories=None, user_id=Non
 def index():
     conn = db.get_connection(current_app.config["DB_PATH"])
     active_version = db.get_active_bom_version(conn)
-    submission = db.get_or_create_submission(conn, active_version["id"], int(current_user.id)) if active_version else None
+    version_id = request.args.get("version_id", type=int)
+    if version_id:
+        view_version = db.get_bom_version(conn, version_id)
+        if not view_version or view_version["status"] not in ("published", "archived"):
+            conn.close()
+            abort(404)
+    else:
+        view_version = active_version
+    viewing_history = bool(view_version) and (not active_version or view_version["id"] != active_version["id"])
+
+    submission = db.get_or_create_submission(conn, view_version["id"], int(current_user.id)) if view_version else None
     suggestions = db.search_suggestions(conn)
-    parts = db.list_parts(conn)
+    parts = db.list_parts(conn, view_version["id"] if view_version else None)
     latest_bom_upload = db.get_latest_bom_upload(conn)
-    progress = db.submission_progress(conn, active_version["id"], int(current_user.id)) if active_version else {"done": 0, "total": 0, "percent": 0}
+    progress = db.submission_progress(conn, view_version["id"], int(current_user.id)) if view_version else {"done": 0, "total": 0, "percent": 0}
+    overseas_countries = [c for c in db.list_bom_countries(conn, view_version["id"]) if c != "한국"] if view_version else []
     conn.close()
     category_counts = Counter(p["category"] for p in parts if p.get("category"))
     categories = sorted(category_counts)
+    sub_category_counts = Counter(p["sub_category"] for p in parts if p.get("sub_category"))
+    sub_categories = sorted(sub_category_counts)
     return render_template(
-        "bom.html", countries=COUNTRIES, suggestions=suggestions,
+        "bom.html", countries=COUNTRIES, overseas_countries=overseas_countries, suggestions=suggestions,
         categories=categories, category_counts=category_counts,
-        latest_bom_upload=latest_bom_upload, active_version=active_version, submission=submission,
-        can_edit=current_user.role == "admin" or (submission and submission["status"] in ("draft", "returned")),
+        sub_categories=sub_categories, sub_category_counts=sub_category_counts,
+        latest_bom_upload=latest_bom_upload, active_version=view_version, submission=submission,
+        can_edit=(not viewing_history) and current_user.role != "admin" and (submission and submission["status"] in ("draft", "returned")),
         progress=progress,
+        viewing_history=viewing_history, view_version=view_version,
+        design_field_labels=DESIGN_FIELD_LABELS,
+    )
+
+@bom_bp.route("/history")
+@login_required
+def history():
+    conn = db.get_connection(current_app.config["DB_PATH"])
+    active = db.get_active_bom_version(conn)
+    versions = [v for v in db.list_bom_versions(conn) if v["status"] in ("published", "archived")]
+    conn.close()
+    for v in versions:
+        v["is_active"] = bool(active) and v["id"] == active["id"]
+
+    status = request.args.get("status", "")
+    search = (request.args.get("search") or "").strip().lower()
+    date_from = request.args.get("date_from", "")
+    date_to = request.args.get("date_to", "")
+    show_unconfirmed = request.args.get("show_unconfirmed") == "1"
+
+    if not show_unconfirmed:
+        versions = [v for v in versions if v["is_active"] or v["is_confirmed"]]
+    if status == "active":
+        versions = [v for v in versions if v["is_active"]]
+    elif status == "confirmed":
+        versions = [v for v in versions if v["is_confirmed"] and not v["is_active"]]
+    if search:
+        versions = [v for v in versions if search in (v["name"] or "").lower() or search in (v["vehicle"] or "").lower()]
+    if date_from:
+        versions = [v for v in versions if v["confirmed_at"] and v["confirmed_at"] >= date_from]
+    if date_to:
+        versions = [v for v in versions if v["confirmed_at"] and v["confirmed_at"] <= date_to + "T23:59:59"]
+
+    return render_template(
+        "bom_history.html", versions=versions, active=active,
+        status=status, search=request.args.get("search", ""), date_from=date_from, date_to=date_to,
+        show_unconfirmed=show_unconfirmed,
     )
 
 @bom_bp.route("/my-bom")
@@ -139,9 +201,12 @@ def my_bom():
     conn.close()
     category_counts = Counter(p["category"] for p in parts if p.get("category"))
     categories = sorted(category_counts)
+    sub_category_counts = Counter(p["sub_category"] for p in parts if p.get("sub_category"))
+    sub_categories = sorted(sub_category_counts)
     return render_template(
         "my_bom.html", countries=COUNTRIES, suggestions=suggestions,
         categories=categories, category_counts=category_counts,
+        sub_categories=sub_categories, sub_category_counts=sub_category_counts,
         active_version=active_version, submission=submission,
         can_edit=bool(submission and submission["status"] in ("draft", "returned")),
         progress=progress,
@@ -155,8 +220,11 @@ def grid():
     status = request.args.get("status", "all")
     search = request.args.get("search", "")
     categories = request.args.getlist("category")
+    sub_categories = request.args.getlist("sub_category")
     assigned_only = request.args.get("assigned") == "1"
+    group_only = request.args.get("group_only") == "1"
     scope = request.args.get("scope")
+    version_id = request.args.get("version_id", type=int)
     page = int(request.args.get("page", 1))
     page_size = int(request.args.get("page_size", PAGE_SIZE))
     if page_size not in PAGE_SIZE_OPTIONS:
@@ -164,13 +232,22 @@ def grid():
 
     conn = db.get_connection(current_app.config["DB_PATH"])
     active_version = db.get_active_bom_version(conn)
-    submission = db.get_or_create_submission(conn, active_version["id"], int(current_user.id)) if active_version else None
-    configured_countries = [country for country in db.list_bom_countries(conn, active_version["id"] if active_version else None) if country != "한국"]
-    if current_user.role != "admin" or not selected_countries:
+    if version_id:
+        target_version = db.get_bom_version(conn, version_id)
+        if not target_version or target_version["status"] not in ("published", "archived"):
+            conn.close()
+            abort(404)
+    else:
+        target_version = active_version
+    viewing_history = bool(target_version) and (not active_version or target_version["id"] != active_version["id"])
+
+    submission = db.get_or_create_submission(conn, target_version["id"], int(current_user.id)) if target_version else None
+    configured_countries = [country for country in db.list_bom_countries(conn, target_version["id"] if target_version else None) if country != "한국"]
+    if current_user.role != "admin":
         selected_countries = configured_countries
     display_countries = ["한국"] + selected_countries
     input_user_id = None if current_user.role == "admin" else int(current_user.id)
-    all_rows = _filtered_rows(conn, display_countries, status, search, categories, input_user_id, assigned_only)
+    all_rows = _filtered_rows(conn, display_countries, status, search, categories, input_user_id, assigned_only, bom_id=target_version["id"] if target_version else None, group_only=group_only, sub_categories=sub_categories)
     overseas_countries = db.list_overseas_countries(conn)
     conn.close()
 
@@ -198,15 +275,20 @@ def grid():
         material_sum=material_sum, logistics_sum=logistics_sum, total_sum=total_sum,
         # Reuse this list for both case-column management and sourcing choices.
         countries=overseas_countries,
-        sourcing_countries=["KD", "LP", "MIP"] + overseas_countries,
+        sourcing_countries=["KD", "LP", "MIP"],
         assembly_sourcing_options=["KD", "LP", "MIP"],
+        design_field_labels=DESIGN_FIELD_LABELS,
         selected_countries=selected_countries,
-        can_manage_countries=current_user.role == "admin",
+        can_manage_countries=current_user.role == "admin" and not viewing_history,
         is_admin=current_user.role == "admin",
-        can_edit=current_user.role == "admin" or (scope == "my_bom" and submission and submission["status"] in ("draft", "returned")),
-        assignment_enabled=current_user.role != "admin" and scope == "my_bom",
-        show_group_button=current_user.role == "admin" or scope == "my_bom",
+        can_edit=False if viewing_history else (True if current_user.role == "admin" else (scope == "my_bom" and submission and submission["status"] in ("draft", "returned"))),
+        show_reset_button=False if viewing_history else (current_user.role != "admin" and scope == "my_bom"),
+        show_group_button=False if viewing_history else (current_user.role == "admin" or scope == "my_bom"),
+        show_confirm_button=False if viewing_history else (current_user.role == "admin"),
         assigned_only=assigned_only,
+        group_only=group_only,
+        viewing_history=viewing_history,
+        version_id=target_version["id"] if target_version else None,
     )
 
 @bom_bp.route("/rows", methods=["POST"])
@@ -221,13 +303,33 @@ def add_row():
         conn.close()
         return jsonify({"ok": False, "message": "기준 행을 찾을 수 없습니다."}), 404
     try:
-        part = db.add_manual_part(conn, active["id"], anchor["part_no"], anchor["row_num"], request.form.get("position", "after"), {
-            "part_name": (request.form.get("part_name") or "").strip(),
-            "part_no": (request.form.get("part_no") or "").strip(),
-            "qty": request.form.get("qty"),
-            "spec": request.form.get("spec"),
-        })
+        fields = {name: request.form.get(name) for name, _ in DESIGN_FIELDS if name != "part_no"}
+        fields["part_name"] = (fields.get("part_name") or "").strip()
+        fields["part_no"] = (request.form.get("part_no") or "").strip()
+        part = db.add_manual_part(conn, active["id"], anchor["part_no"], anchor["row_num"], request.form.get("position", "after"), fields)
         result = {"ok": True, "row_num": part["row_num"]}
+    except ValueError as exc:
+        result = {"ok": False, "message": str(exc)}
+    conn.close()
+    return jsonify(result), (200 if result["ok"] else 422)
+
+@bom_bp.route("/row/delete", methods=["POST"])
+@login_required
+def delete_row():
+    if current_user.role != "admin":
+        return jsonify({"ok": False, "message": "관리자만 BOM 행을 삭제할 수 있습니다."}), 403
+    conn = db.get_connection(current_app.config["DB_PATH"])
+    active = db.get_active_bom_version(conn)
+    row_nums = request.form.getlist("row_num", type=int)
+    if not active or not row_nums:
+        conn.close()
+        return jsonify({"ok": False, "message": "삭제할 행을 찾을 수 없습니다."}), 404
+    try:
+        for row_num in sorted(row_nums, reverse=True):
+            part = db.get_part_by_row_num(conn, row_num, active["id"])
+            if part:
+                db.delete_manual_part(conn, active["id"], part["part_no"], row_num)
+        result = {"ok": True}
     except ValueError as exc:
         result = {"ok": False, "message": str(exc)}
     conn.close()
@@ -238,18 +340,53 @@ def add_row():
 def summary():
     country = request.args.get("country", COUNTRIES[0])
     conn = db.get_connection(current_app.config["DB_PATH"])
-    categories = db.bom_tree(conn, country)
+    display_version = db.get_display_bom_version(conn)
+    tree = db.summary_tree(conn, country, display_version["id"] if display_version else None)
     conn.close()
-    grand_material = sum(c["material_sum"] for c in categories)
-    grand_logistics = sum(c["logistics_sum"] for c in categories)
-    grand_tariff = sum(c["tariff_sum"] for c in categories)
-    grand_total = sum(c["total_sum"] for c in categories)
+    grand = tree["grand"]
     return render_template(
         "partials/_summary.html",
-        categories=categories, country=country, countries=COUNTRIES,
-        grand_material=grand_material, grand_logistics=grand_logistics,
-        grand_tariff=grand_tariff, grand_total=grand_total,
+        majors=tree["majors"], country=country, countries=COUNTRIES,
+        grand_material=grand["material_sum"], grand_logistics=grand["logistics_sum"],
+        grand_tariff=grand["tariff_sum"], grand_total=grand["total_sum"],
     )
+
+@bom_bp.route("/summary-page")
+@login_required
+def summary_page():
+    conn = db.get_connection(current_app.config["DB_PATH"])
+    active_version = db.get_active_bom_version(conn)
+    display_version = db.get_display_bom_version(conn)
+    display_bom_id = display_version["id"] if display_version else None
+    vehicles = db.list_vehicles(conn, display_bom_id)
+    selected_vehicle = request.args.get("vehicle", "NE2_NV1")
+    if selected_vehicle not in vehicles:
+        selected_vehicle = vehicles[0] if vehicles else ""
+    report = db.dashboard_report(conn, display_bom_id, selected_vehicle)
+    for major in report["majors"]:
+        dom_total = {"material": 0.0, "logistics": 0.0, "tariff": 0.0, "total": 0.0}
+        over_total = {c: {"material_lp": 0.0, "material_kd": 0.0, "material_total": 0.0, "logistics": 0.0, "tariff": 0.0, "total": 0.0} for c in report["overseas_countries"]}
+        for cat in major["categories"]:
+            for key in dom_total:
+                dom_total[key] += cat["domestic"][key]
+            for country in report["overseas_countries"]:
+                for key in over_total[country]:
+                    over_total[country][key] += cat["overseas"][country][key]
+        major["domestic_total"] = dom_total
+        major["overseas_total"] = over_total
+    conn.close()
+    return render_template(
+        "dashboard_new.html",
+        report=report,
+        vehicles=vehicles,
+        selected_vehicle=selected_vehicle,
+        active_version=active_version,
+    )
+
+@bom_bp.route("/stage-summary")
+@login_required
+def stage_summary():
+    return render_template("stage_summary_placeholder.html")
 
 @bom_bp.route("/row/<part_no>/<int:row_num>/<country>", methods=["POST"])
 @bom_bp.route("/row/by-number/<int:row_num>/<country>", methods=["POST"])
@@ -266,7 +403,7 @@ def save_row(row_num, country, part_no=None):
     if current_user.role != "admin" and submission["status"] not in ("draft", "returned"):
         conn.close()
         return jsonify({"error": "제출된 BOM은 관리자 검토 전까지 수정할 수 없습니다."}), 403
-    if current_user.role != "admin" and (part_no, row_num) not in db.assigned_part_keys(conn, active_version["id"], int(current_user.id)):
+    if current_user.role != "admin" and (part_no, row_num) not in db.explicit_assigned_part_keys(conn, active_version["id"], int(current_user.id)):
         conn.close()
         return jsonify({"error": "먼저 이 품목을 내 담당 품목으로 선택해 주세요."}), 403
     group = db.group_for_part(conn, active_version["id"], part_no, row_num)
@@ -276,12 +413,20 @@ def save_row(row_num, country, part_no=None):
     if group and current_user.role != "admin" and group["owner_user_id"] != int(current_user.id):
         conn.close()
         return jsonify({"error": "그룹 담당자만 상위 품목의 재료비를 입력할 수 있습니다."}), 403
-    editable_fields = ("currency", "unit_price_material", "unit_price_logistics", "tariff_rate", "mold_cost", "sourcing_part", "sourcing_assembly", "sourcing_part_location", "sourcing_assembly_location", "special_fx_rate", "special_fx_reason")
+    if current_user.role == "admin" and part.get("manual_row"):
+        design_updates = {name: request.form.get(name) for name, _ in DESIGN_FIELDS if name in request.form}
+        if "level_depth" in request.form:
+            design_updates["level_depth"] = request.form.get("level_depth")
+        if design_updates:
+            part_no = db.update_manual_part_fields(conn, active_version["id"], part_no, row_num, design_updates)
+    editable_fields = ("currency", "unit_price_material", "unit_price_logistics", "tariff_rate", "mold_cost", "sourcing_part", "sourcing_assembly", "sourcing_part_location", "sourcing_assembly_location", "special_fx_rate", "special_fx_reason", "note")
     target_countries = request.form.getlist("target_country")
     if not target_countries:
         target_countries = [name.split("__", 1)[0] for name in request.form if "__" in name]
     target_countries = target_countries or [country]
     target_countries = list(dict.fromkeys(target_countries))
+    owner = db.category_owner(conn, active_version["id"], part.get("category")) if current_user.role == "admin" else None
+    target_user_id = owner["id"] if owner else None
     field_errors = []
     country_results = {}
     for target_country in target_countries:
@@ -292,16 +437,20 @@ def save_row(row_num, country, part_no=None):
         calculated = calc.recalculate_purchase_row(conn, part_no, row_num, target_country, fields)
         field_errors.extend(calculated.pop("field_errors", []))
         if current_user.role == "admin":
-            db.upsert_purchase(conn, part_no, row_num, target_country, calculated, updated_by=current_user.username)
+            if target_user_id:
+                db.upsert_user_purchase(conn, part_no, row_num, target_country, target_user_id, calculated, updated_by=current_user.username)
+            else:
+                db.upsert_purchase(conn, part_no, row_num, target_country, calculated, updated_by=current_user.username)
         else:
             db.upsert_user_purchase(conn, part_no, row_num, target_country, int(current_user.id), calculated, updated_by=current_user.username)
         country_results[target_country] = calculated
     part = db.get_part(conn, part_no, row_num)
-    purchase = db.get_purchase(conn, part_no, row_num, country) if current_user.role == "admin" else db.get_user_purchase(conn, part_no, row_num, country, int(current_user.id))
+    effective_user_id = target_user_id if current_user.role == "admin" else int(current_user.id)
+    purchase = db.get_user_purchase(conn, part_no, row_num, country, effective_user_id) if effective_user_id else db.get_purchase(conn, part_no, row_num, country)
     completion_countries = db.list_bom_countries(conn, active_version["id"])
     completion_values = [
-        db.get_purchase(conn, part_no, row_num, configured_country) if current_user.role == "admin"
-        else db.get_user_purchase(conn, part_no, row_num, configured_country, int(current_user.id))
+        db.get_user_purchase(conn, part_no, row_num, configured_country, effective_user_id) if effective_user_id
+        else db.get_purchase(conn, part_no, row_num, configured_country)
         for configured_country in completion_countries
     ]
     conn.close()
@@ -344,6 +493,7 @@ def submit():
         db.get_or_create_submission(conn, active["id"], int(current_user.id))
         db.save_submission_snapshot(conn, active["id"], int(current_user.id))
         db.update_submission_status(conn, active["id"], int(current_user.id), "submitted")
+        db.notify_admins(conn, "BOM 제출", f"{current_user.username}님이 {active['name']} 제출을 요청했습니다.", link=url_for("admin.reviews"))
     conn.close()
     return jsonify({"ok": True, "message": "검토 요청으로 제출했습니다."})
 
@@ -366,7 +516,7 @@ def set_assignment(row_num, part_no=None):
         return jsonify({"ok": False, "message": "제출된 BOM은 담당 품목을 변경할 수 없습니다."}), 403
     assigned = request.form.get("assigned") in ("1", "true", "on")
     db.set_part_assignment(conn, active["id"], int(current_user.id), part_no, row_num, assigned)
-    count = len(db.assigned_part_keys(conn, active["id"], int(current_user.id)))
+    count = len(db.explicit_assigned_part_keys(conn, active["id"], int(current_user.id)))
     conn.close()
     return jsonify({"ok": True, "assigned": assigned, "count": count})
 
@@ -378,10 +528,68 @@ def my_assignments():
     conn = db.get_connection(current_app.config["DB_PATH"])
     active = db.get_active_bom_version(conn)
     submission = db.get_or_create_submission(conn, active["id"], int(current_user.id)) if active else None
-    parts = db.list_current_assignments(conn, active["id"], int(current_user.id)) if active else []
+    my_categories = db.get_user_categories(conn, active["id"], int(current_user.id)) if active else set()
     conn.close()
-    can_cancel = bool(submission) and submission["status"] in ("draft", "returned")
-    return render_template("my_assignments.html", parts=parts, submission=submission, can_cancel=can_cancel, active_version=active)
+    can_edit = bool(submission) and submission["status"] in ("draft", "returned")
+    return render_template("my_assignments.html", submission=submission, active_version=active, my_categories=my_categories, can_edit=can_edit)
+
+@bom_bp.route("/assignments/grid")
+@login_required
+def assignment_grid():
+    if current_user.role == "admin":
+        abort(404)
+    status = request.args.get("status", "all")
+    search = request.args.get("search", "")
+    page = int(request.args.get("page", 1))
+    page_size = int(request.args.get("page_size", PAGE_SIZE))
+    if page_size not in PAGE_SIZE_OPTIONS:
+        page_size = PAGE_SIZE
+
+    conn = db.get_connection(current_app.config["DB_PATH"])
+    active = db.get_active_bom_version(conn)
+    my_categories = db.get_user_categories(conn, active["id"], int(current_user.id)) if active else set()
+    submission = db.get_or_create_submission(conn, active["id"], int(current_user.id)) if active else None
+    can_edit = bool(submission) and submission["status"] in ("draft", "returned")
+    all_rows = _filtered_rows(conn, ["한국"], status, search, my_categories, int(current_user.id), bom_id=active["id"]) if active and my_categories else []
+    conn.close()
+
+    total = len(all_rows)
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    page = max(1, min(page, total_pages))
+    start = (page - 1) * page_size
+    page_rows = all_rows[start:start + page_size]
+
+    window_size = 5
+    window_start = max(1, page - window_size // 2)
+    window_end = min(total_pages, window_start + window_size - 1)
+    window_start = max(1, window_end - window_size + 1)
+
+    return render_template(
+        "partials/_assignment_grid.html",
+        rows=page_rows, page=page, total_pages=total_pages, total=total,
+        page_size=page_size, page_size_options=PAGE_SIZE_OPTIONS,
+        window_start=window_start, window_end=window_end,
+        can_edit=can_edit,
+    )
+
+@bom_bp.route("/categories/<category>", methods=["POST"])
+@login_required
+def set_category_membership(category):
+    if current_user.role == "admin":
+        return jsonify({"ok": False, "message": "관리자는 담당 구분을 선택하지 않습니다."}), 403
+    conn = db.get_connection(current_app.config["DB_PATH"])
+    active = db.get_active_bom_version(conn)
+    if not active:
+        conn.close()
+        return jsonify({"ok": False, "message": "배포된 BOM이 없습니다."}), 404
+    submission = db.get_or_create_submission(conn, active["id"], int(current_user.id))
+    if submission["status"] not in ("draft", "returned"):
+        conn.close()
+        return jsonify({"ok": False, "message": "제출된 BOM은 담당 구분을 변경할 수 없습니다."}), 403
+    member = request.form.get("member") in ("1", "true", "on")
+    db.set_category_membership(conn, active["id"], int(current_user.id), category, member)
+    conn.close()
+    return jsonify({"ok": True, "category": category, "member": member})
 
 @bom_bp.route("/reset-work", methods=["POST"])
 @login_required
@@ -425,14 +633,21 @@ def set_group(part_no, row_num):
 @login_required
 def set_selected_group():
     row_nums = sorted({int(value) for value in request.form.getlist("row_num")})
-    if len(row_nums) < 2:
-        return jsonify({"ok": False, "message": "그룹으로 지정할 행을 두 개 이상 선택하세요."}), 422
     conn = db.get_connection(current_app.config["DB_PATH"])
     active = db.get_active_bom_version(conn)
     parts = [db.get_part_by_row_num(conn, row_num, active["id"]) for row_num in row_nums] if active else []
     if not active or any(part is None for part in parts):
         conn.close()
         return jsonify({"ok": False, "message": "선택한 BOM 행을 찾을 수 없습니다."}), 404
+    if len(row_nums) == 1:
+        part = parts[0]
+        existing = db.group_for_part(conn, active["id"], part["part_no"], part["row_num"])
+        if not existing:
+            conn.close()
+            return jsonify({"ok": False, "message": "그룹으로 지정할 행을 두 개 이상 선택하세요."}), 422
+        db.set_part_group(conn, active["id"], part["part_no"], part["row_num"], int(current_user.id), False)
+        conn.close()
+        return jsonify({"ok": True, "removed": True})
     parent = min(parts, key=lambda p: ((p.get("level_depth") or 0), p["row_num"]))
     existing = db.group_for_part(conn, active["id"], parent["part_no"], parent["row_num"])
     if existing and existing["parent_part_no"] == parent["part_no"] and existing["parent_row_num"] == parent["row_num"]:
@@ -494,6 +709,18 @@ def submission_detail(submission_id):
     revision_history = db.list_submission_revisions(history_conn, submission_id)
     history_conn.close()
     return render_template("submission_detail.html", submission=submission, snapshot=db.submission_snapshot(submission), revision_history=revision_history, review_mode=False)
+
+@bom_bp.route("/submissions/<int:submission_id>/recall", methods=["POST"])
+@login_required
+def recall_submission(submission_id):
+    conn = db.get_connection(current_app.config["DB_PATH"])
+    submission = db.get_submission(conn, submission_id)
+    if not submission or submission["user_id"] != int(current_user.id) or submission["status"] != "submitted":
+        conn.close()
+        abort(404)
+    db.update_submission_status(conn, submission["bom_version_id"], int(current_user.id), "draft")
+    conn.close()
+    return redirect(url_for("bom.submissions"))
 
 @bom_bp.route("/row/<part_no>/<int:row_num>/<country>/history")
 @login_required

@@ -19,12 +19,20 @@
     <div class="kpi-card kpi-success"><div class="kpi-icon"><i class="bi bi-airplane"></i></div><div class="kpi-body"><div class="kpi-label">&#54644;&#50808; &#48708;&#50857;</div><div class="kpi-value">{{ "{:,.0f}".format(overseas_case_total) }}</div></div></div>
 </div>
 
-{% macro render_node(node) %}
-<li class="tree-node">{% if node.children %}<details class="tree-details"><summary><span class="tree-label">{{ node.part_name }}</span><span class="tree-part-no">{{ node.vehicle }} · {{ node.part_no }}</span><span class="tree-cost">{{ "{:,.0f}".format(node.total_cost) }}</span></summary><ul class="tree-children">{% for child in node.children %}{{ render_node(child) }}{% endfor %}</ul></details>{% else %}<div class="tree-leaf"><span class="tree-label">{{ node.part_name }}</span><span class="tree-part-no">{{ node.vehicle }} · {{ node.part_no }}</span><span class="tree-cost">{{ "{:,.0f}".format(node.total_cost) }}</span></div>{% endif %}</li>
-{% endmacro %}
-<section class="dashboard-case-board">
-{% for panel in dashboard_cases %}
-<article class="portal-card dashboard-case-panel"><header><div><h3 class="card-title">{{ panel.title }}</h3><span class="text-muted small">{{ panel.subtitle }}</span></div><strong>{{ "{:,.0f}".format(panel.total) }}</strong></header><div class="case-panel-totals"><span>&#51116;&#47308;&#48708; {{ "{:,.0f}".format(panel.material_total) }}</span><span>&#47932;&#47448;&#48708; {{ "{:,.0f}".format(panel.logistics_total) }}</span></div>{% for cat in panel.categories %}<details class="tree-details tree-category" open><summary><span class="tree-label">{{ cat.name }}</span><span class="tree-cost">{{ "{:,.0f}".format(cat.total_sum) }}</span></summary><ul class="tree-children">{% for child in cat.children %}{{ render_node(child) }}{% endfor %}</ul></details>{% else %}<div class="text-muted small py-3">&#51077;&#47141;&#46108; &#48708;&#50857;&#51060; &#50630;&#49845;&#45768;&#45796;.</div>{% endfor %}</article>
-{% endfor %}
-</section>
+<div class="portal-card">
+<div class="d-flex justify-content-between align-items-center mb-3"><h3 class="card-title mb-0">재료비 Summary</h3><a class="btn btn-outline-primary btn-sm" href="{{ url_for('home.export_dashboard', vehicle=selected_vehicle) }}"><i class="bi bi-file-earmark-excel"></i> Excel 다운로드</a></div>
+<div class="table-responsive"><table class="table bom-table align-middle report-summary-table"><thead><tr><th rowspan="2">대분류</th><th rowspan="2">구분</th><th colspan="4" class="domestic-group-header">내수</th>{% for country in report.overseas_countries %}<th colspan="6" class="country-group-header">{{ country }}</th>{% endfor %}</tr><tr><th>재료비</th><th>물류비</th><th>관세</th><th>합계</th>{% for country in report.overseas_countries %}<th>LP</th><th>KD</th><th>재료비 합계</th><th>물류비</th><th>관세</th><th>합계</th>{% endfor %}</tr></thead><tbody>
+{% for major in report.majors %}{% set major_id = 'mg-' ~ loop.index %}<tr class="summary-major-row"><th class="summary-major-toggle" colspan="2" data-major-target="{{ major_id }}"><span class="major-chevron">▾</span> {{ major.major }}</th><td>{{ '{:,.0f}'.format(major.domestic_total.material) }}</td><td>{{ '{:,.0f}'.format(major.domestic_total.logistics) }}</td><td>{{ '{:,.0f}'.format(major.domestic_total.tariff) }}</td><td>{{ '{:,.0f}'.format(major.domestic_total.total) }}</td>{% for country in report.overseas_countries %}{% set mo = major.overseas_total[country] %}<td>{{ '{:,.0f}'.format(mo.material_lp) }}</td><td>{{ '{:,.0f}'.format(mo.material_kd) }}</td><td>{{ '{:,.0f}'.format(mo.material_total) }}</td><td>{{ '{:,.0f}'.format(mo.logistics) }}</td><td>{{ '{:,.0f}'.format(mo.tariff) }}</td><td>{{ '{:,.0f}'.format(mo.total) }}</td>{% endfor %}</tr>{% for cat in major.categories %}<tr class="summary-cat-row" data-major-row="{{ major_id }}"><td class="summary-cat-spacer"></td><td>{{ cat.category }}</td><td>{{ '{:,.0f}'.format(cat.domestic.material) }}</td><td>{{ '{:,.0f}'.format(cat.domestic.logistics) }}</td><td>{{ '{:,.0f}'.format(cat.domestic.tariff) }}</td><td>{{ '{:,.0f}'.format(cat.domestic.total) }}</td>{% for country in report.overseas_countries %}{% set o = cat.overseas[country] %}<td>{{ '{:,.0f}'.format(o.material_lp) }}</td><td>{{ '{:,.0f}'.format(o.material_kd) }}</td><td>{{ '{:,.0f}'.format(o.material_total) }}</td><td>{{ '{:,.0f}'.format(o.logistics) }}</td><td>{{ '{:,.0f}'.format(o.tariff) }}</td><td>{{ '{:,.0f}'.format(o.total) }}</td>{% endfor %}</tr>{% endfor %}{% else %}<tr><td colspan="99" class="text-center text-muted py-4">데이터가 없습니다.</td></tr>{% endfor %}
+</tbody><tfoot><tr class="fw-bold"><th colspan="2">합 계</th><td>{{ '{:,.0f}'.format(report.grand_domestic.material) }}</td><td>{{ '{:,.0f}'.format(report.grand_domestic.logistics) }}</td><td>{{ '{:,.0f}'.format(report.grand_domestic.tariff) }}</td><td>{{ '{:,.0f}'.format(report.grand_domestic.total) }}</td>{% for country in report.overseas_countries %}{% set go = report.grand_overseas[country] %}<td>{{ '{:,.0f}'.format(go.material_lp) }}</td><td>{{ '{:,.0f}'.format(go.material_kd) }}</td><td>{{ '{:,.0f}'.format(go.material_total) }}</td><td>{{ '{:,.0f}'.format(go.logistics) }}</td><td>{{ '{:,.0f}'.format(go.tariff) }}</td><td>{{ '{:,.0f}'.format(go.total) }}</td>{% endfor %}</tr></tfoot></table></div>
+</div>
+<script>
+document.addEventListener('click', (event) => {
+  const th = event.target.closest('.summary-major-toggle');
+  if (!th) return;
+  const collapsed = th.classList.toggle('collapsed');
+  document.querySelectorAll(`tr[data-major-row="${th.dataset.majorTarget}"]`).forEach((row) => {
+    row.style.display = collapsed ? 'none' : '';
+  });
+});
+</script>
 {% endblock %}

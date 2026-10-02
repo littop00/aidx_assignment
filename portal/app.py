@@ -13,6 +13,7 @@ from routes.home_routes import home_bp
 from routes.bom_routes import bom_bp
 from routes.fx_routes import fx_bp
 from routes.admin_routes import admin_bp
+from routes.bid_bom_routes import bid_bom_bp
 
 
 def create_app(db_path=None):
@@ -30,6 +31,7 @@ def create_app(db_path=None):
     app.register_blueprint(bom_bp)
     app.register_blueprint(fx_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(bid_bom_bp)
 
     login_manager = LoginManager()
     login_manager.login_view = "auth.login"
@@ -39,6 +41,14 @@ def create_app(db_path=None):
     def add_no_cache_headers(response):
         response.headers["Cache-Control"] = "no-store"
         return response
+
+    @app.before_request
+    def enforce_bom_due_dates():
+        if not current_user.is_authenticated:
+            return
+        conn = db.get_connection(app.config["DB_PATH"])
+        db.enforce_due_dates(conn)
+        conn.close()
 
     @app.context_processor
     def navigation_context():

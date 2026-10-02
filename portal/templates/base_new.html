@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="corporate">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}TMS Portal{% endblock %}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css" rel="stylesheet" type="text/css">
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <link href="{{ url_for('static', filename='style_new.css') }}" rel="stylesheet">
+    <style>
+        body { font-family: 'Plus Jakarta Sans', 'Noto Sans KR', sans-serif; }
+        [x-cloak] { display: none !important; }
+    </style>
+</head>
+<body class="bg-base-200 text-[#1B2559] min-h-screen flex flex-col md:flex-row antialiased">
+<div id="toast-slot" class="toast-stack"></div>
+
+{% if current_user.is_authenticated %}
+<aside class="w-full md:w-64 bg-white min-h-screen flex flex-col justify-between border-r border-[#E0E5F2] shadow-sm z-30 shrink-0">
+  <div>
+    <div class="h-20 flex items-center px-6 border-b border-[#F4F7FE]">
+      <span class="text-xl font-extrabold tracking-tight bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent flex items-center gap-2">
+        <i class="bi bi-boxes text-blue-600"></i> TMS Portal
+      </span>
+    </div>
+
+    <nav class="p-4">
+      <ul class="menu menu-md w-full gap-1 p-0">
+        <li class="menu-title text-[#A3AED0] font-bold text-xs tracking-wider mb-2 px-2">DASHBOARD</li>
+        <li x-data="{ open: {{ 'true' if request.endpoint in ('bom.summary_page', 'bom.stage_summary') else 'false' }} }">
+          <a href="#" @click.prevent="open = !open" class="flex items-center justify-between gap-3 px-4 py-3 rounded-xl font-medium cursor-pointer {% if request.endpoint in ('bom.summary_page', 'bom.stage_summary') %}text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
+            <span class="flex items-center gap-3"><i class="bi bi-pie-chart text-lg"></i> 재료비 Summary</span>
+            <i class="bi text-xs" :class="open ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
+          </a>
+          <ul x-show="open" x-cloak class="pl-8 mt-1 flex flex-col gap-1">
+            <li>
+              <a href="{{ url_for('bom.summary_page') }}" class="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium {% if request.endpoint == 'bom.summary_page' %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
+                차종별 SUMMARY
+              </a>
+            </li>
+            <li>
+              <a href="{{ url_for('bom.stage_summary') }}" class="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium {% if request.endpoint == 'bom.stage_summary' %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
+                단계별 SUMMARY
+              </a>
+            </li>
+          </ul>
+        </li>
+
+        <li class="menu-title text-[#A3AED0] font-bold text-xs tracking-wider mt-4 mb-2 px-2">수주 BOM</li>
+        <li x-data="{ open: {{ 'true' if request.endpoint in ('bom.index', 'bom.grid', 'bom.history') else 'false' }} }">
+          <a href="#" @click.prevent="open = !open" class="flex items-center justify-between gap-3 px-4 py-3 rounded-xl font-medium cursor-pointer {% if request.endpoint in ('bom.index', 'bom.grid', 'bom.history') %}text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
+            <span class="flex items-center gap-3"><i class="bi bi-table text-lg"></i> BOM 조회</span>
+            <i class="bi text-xs" :class="open ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
+          </a>
+          <ul x-show="open" x-cloak class="pl-8 mt-1 flex flex-col gap-1">
+            <li>
+              <a href="{{ url_for('bom.index') }}" class="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium {% if request.endpoint in ('bom.index', 'bom.grid') and not request.args.get('version_id') %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
+                현재 BOM
+              </a>
+            </li>
+            <li>
+              <a href="{{ url_for('bom.history') }}" class="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium {% if request.endpoint == 'bom.history' or (request.endpoint in ('bom.index', 'bom.grid') and request.args.get('version_id')) %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
+                BOM 이력
+              </a>
+            </li>
+          </ul>
+        </li>
+
+        {% if current_user.role != 'admin' %}
+        <li x-data="{ open: {{ 'true' if request.endpoint in ('bom.my_assignments', 'bom.assignment_grid', 'bom.my_bom') else 'false' }} }">
+          <a href="#" @click.prevent="open = !open" class="flex items-center justify-between gap-3 px-4 py-3 rounded-xl font-medium cursor-pointer {% if request.endpoint in ('bom.my_assignments', 'bom.assignment_grid', 'bom.my_bom') %}text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
+            <span class="flex items-center gap-3"><i class="bi bi-pencil-square text-lg"></i> 수주 재료비 입력</span>
+            <i class="bi text-xs" :class="open ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
+          </a>
+          <ul x-show="open" x-cloak class="pl-8 mt-1 flex flex-col gap-1">
+            <li>
+              <a href="{{ url_for('bom.my_assignments') }}" class="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium {% if request.endpoint in ('bom.my_assignments', 'bom.assignment_grid') %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
+                담당 품목 관리
+              </a>
+            </li>
+            <li>
+              <a href="{{ url_for('bom.my_bom') }}" class="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium {% if request.endpoint == 'bom.my_bom' %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
+                BOM 입력
+              </a>
+            </li>
+          </ul>
+        </li>
+        <li>
+          <a href="{{ url_for('bom.submissions') }}" class="flex items-center gap-3 px-4 py-3 rounded-xl font-medium {% if request.endpoint and request.endpoint.startswith('bom.submission') %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
+            <i class="bi bi-send-check text-lg"></i> 내 제출 현황
+          </a>
+        </li>
+        {% endif %}
+
+        <li>
+          <a href="{{ url_for('bid_bom.index') }}" class="flex items-center gap-3 px-4 py-3 rounded-xl font-medium {% if request.endpoint and request.endpoint.startswith('bid_bom.') %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
+            <i class="bi bi-clipboard2-data text-lg"></i> 입찰 BOM
+          </a>
+        </li>
+
+        {% if current_user.role == 'admin' %}
+        <li class="menu-title text-[#A3AED0] font-bold text-xs tracking-wider mt-4 mb-2 px-2">ADMINISTRATION</li>
+        <li>
+          <a href="{{ url_for('admin.bom_versions') }}" class="flex items-center gap-3 px-4 py-3 rounded-xl font-medium {% if request.endpoint == 'admin.bom_versions' %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
+            <i class="bi bi-clipboard2-check text-lg"></i> BOM 관리자
+          </a>
+        </li>
+        <li>
+          <a href="{{ url_for('admin.reviews') }}" class="flex items-center gap-3 px-4 py-3 rounded-xl font-medium {% if request.endpoint and request.endpoint.startswith('admin.review') %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
+            <i class="bi bi-clipboard-check text-lg"></i> 제출 검토
+          </a>
+        </li>
+        {% endif %}
+      </ul>
+    </nav>
+  </div>
+
+  <div class="p-4 border-t border-[#F4F7FE]" x-data="{ open: false }">
+    <div class="relative">
+      <button type="button" @click="open = !open" @click.outside="open = false" class="w-full flex items-center justify-between p-2 rounded-xl hover:bg-gray-50 transition-colors">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-500 flex items-center justify-center text-white font-bold text-sm shadow-sm">
+            {{ current_user.username[:2] | upper }}
+          </div>
+          <div class="text-left">
+            <p class="text-sm font-bold text-[#1B2559]">{{ current_user.username }}</p>
+            <p class="text-xs text-[#A3AED0] capitalize">{{ current_user.role }}</p>
+          </div>
+        </div>
+        <i class="bi bi-chevron-down text-xs text-[#A3AED0]"></i>
+      </button>
+
+      <ul class="absolute bottom-14 left-0 w-full menu bg-white rounded-2xl shadow-xl shadow-[#edf2f9] border border-[#E0E5F2]/50 p-2 z-50 gap-1" x-show="open" x-transition x-cloak>
+        <li><a href="{{ url_for('auth.logout') }}" class="text-red-500 hover:bg-red-50 rounded-xl font-medium"><i class="bi bi-box-arrow-right"></i> 로그아웃</a></li>
+      </ul>
+    </div>
+  </div>
+</aside>
+
+<div class="flex-1 flex flex-col min-w-0">
+  <header class="h-20 flex items-center justify-between px-6 md:px-10 z-20 shrink-0">
+    <div>
+      <p class="text-xs font-medium text-[#A3AED0]">Pages / {{ request.endpoint.split('.')[-1] | capitalize if request.endpoint else 'Dashboard' }}</p>
+      <h1 class="text-2xl font-extrabold tracking-tight text-[#1B2559] mt-0.5">{% block page_title %}Main Dashboard{% endblock %}</h1>
+    </div>
+    <div id="fx-widget" hx-get="{{ url_for('fx.widget') }}" hx-trigger="load"></div>
+  </header>
+
+  <main class="flex-1 p-6 md:p-10 pt-0 overflow-y-auto">
+    {% with messages = get_flashed_messages() %}
+        {% if messages %}
+            {% for message in messages %}
+            <div class="alert bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-2xl shadow-sm mb-6 flex items-center gap-3 p-4">
+              <i class="bi bi-check-circle-fill text-lg"></i>
+              <span class="text-sm font-semibold">{{ message }}</span>
+            </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+</div>
+
+{% else %}
+    <div class="w-full min-h-screen flex items-center justify-center p-6">
+        {% block guest_content %}{% endblock %}
+    </div>
+{% endif %}
+
+<script>
+(() => {
+
+    function formatAmount(value) {
+        return new Intl.NumberFormat("ko-KR", {maximumFractionDigits: 0}).format(Number(value || 0));
+    }
+
+    function formatComma(value) {
+        if (value === null || value === undefined || value === "") return "";
+        const str = String(value).replace(/,/g, "");
+        if (str === "" || str === "-" || isNaN(Number(str))) return String(value);
+        const [intPart, decPart] = str.split(".");
+        const withCommas = Number(intPart).toLocaleString("ko-KR");
+        return decPart !== undefined ? `${withCommas}.${decPart}` : withCommas;
+    }
+    function unformatComma(value) {
+        return (value === null || value === undefined) ? "" : String(value).replace(/,/g, "");
+    }
+    window.formatComma = formatComma;
+    window.unformatComma = unformatComma;
+
+    function formatCommaInputs(root) {
+        (root || document).querySelectorAll(".number-comma").forEach((el) => { el.value = formatComma(el.value); });
+    }
+    document.addEventListener("input", (event) => {
+        const el = event.target;
+        if (!el.matches(".number-comma")) return;
+        const raw = el.value;
+        const cursorPos = el.selectionStart ?? raw.length;
+        const rawDigitsBeforeCursor = raw.slice(0, cursorPos).replace(/,/g, "").length;
+        const formatted = formatComma(unformatComma(raw));
+        if (formatted === raw) return;
+        el.value = formatted;
+        let count = 0, newPos = formatted.length;
+        for (let i = 0; i < formatted.length; i++) {
+            if (formatted[i] !== ",") count++;
+            if (count >= rawDigitsBeforeCursor) { newPos = i + 1; break; }
+        }
+        el.setSelectionRange(newPos, newPos);
+    });
+    document.addEventListener("focusout", (event) => {
+        if (event.target.matches(".number-comma")) event.target.value = formatComma(event.target.value);
+    });
+    formatCommaInputs();
+    document.body.addEventListener("htmx:afterSwap", (event) => { formatCommaInputs(event.target); });
+
+    function updateSavedRow(row, payload) {
+        if (payload.countries) {
+            Object.entries(payload.countries).forEach(([country, values]) => {
+                ["material_cost", "logistics_cost", "total_cost"].forEach((name) => {
+                    const cell = row.querySelector(`[data-cost="${country}__${name}"]`);
+                    if (cell) cell.textContent = formatAmount(values[name]);
+                });
+            });
+        }
+        ["material_cost", "logistics_cost", "total_cost"].forEach((name) => {
+            const cell = row.querySelector(`[data-cost="${name}"]`);
+            if (cell) cell.textContent = formatAmount(payload[name]);
+        });
+        const badge = row.querySelector(".status-done, .status-missing");
+        if (badge) {
+            badge.className = `badge ${payload.status_done ? "status-done" : "status-missing"}`;
+            badge.innerHTML = payload.status_done
+                ? '<i class="bi bi-check-circle"></i> 입력 완료'
+                : '<i class="bi bi-exclamation-circle"></i> 미입력';
+        }
+        const saveStatus = row.querySelector(".row-save-status");
+        if (saveStatus && payload.updated_at) {
+            const time = payload.updated_at.replace("T", " ");
+            saveStatus.textContent = payload.updated_by ? `${time} · ${payload.updated_by}` : time;
+        }
+        const status = row.querySelector(".row-save-message");
+        if (status) status.textContent = payload.error ? `Input error: ${payload.error}` : "Saved";
+        const button = row.querySelector(".save-row-btn");
+        if (button) button.innerHTML = payload.error
+            ? '<i class="bi bi-exclamation-triangle"></i> Error'
+            : '<i class="bi bi-check2"></i> Saved';
+        row.classList.toggle("row-save-error", Boolean(payload.error));
+    }
+
+    function highlightRow(row) {
+        if (!row) return;
+        row.scrollIntoView({behavior: "smooth", block: "center"});
+        row.classList.remove("row-highlight");
+        void row.offsetWidth;
+        row.classList.add("row-highlight");
+        window.setTimeout(() => row.classList.remove("row-highlight"), 1600);
+    }
+    window.highlightBomRow = highlightRow;
+
+    function showSaveMessage(message, isError = false, opts = {}) {
+        const slot = document.getElementById("toast-slot");
+        if (!slot) return;
+        const item = document.createElement("div");
+        item.className = `toast-item ${isError ? "toast-error" : "toast-success"}`;
+        const text = document.createElement("span");
+        text.textContent = message;
+        item.appendChild(text);
+        if (isError) {
+            const closeBtn = document.createElement("button");
+            closeBtn.type = "button";
+            closeBtn.className = "toast-close";
+            closeBtn.setAttribute("aria-label", "알림 닫기");
+            closeBtn.innerHTML = "&times;";
+            closeBtn.addEventListener("click", (event) => { event.stopPropagation(); item.remove(); });
+            item.appendChild(closeBtn);
+        } else {
+            window.setTimeout(() => item.remove(), 2500);
+        }
+        if (opts.onClick) {
+            item.classList.add("toast-clickable");
+            item.addEventListener("click", opts.onClick);
+        }
+        slot.appendChild(item);
+    }
+
+    function updateLastSavedIndicator() {
+        const indicator = document.getElementById("last-saved-indicator");
+        if (!indicator) return;
+        const time = new Date().toLocaleTimeString("ko-KR", {hour: "2-digit", minute: "2-digit"});
+        indicator.textContent = `마지막 저장: ${time}`;
+    }
+
+    async function saveRow(row, showSuccess = false) {
+        if (!row || row.dataset.saving === "true") return;
+        row.dataset.saving = "true";
+        const button = row.querySelector(".save-row-btn");
+        const dirtyFields = [...row.querySelectorAll(".row-autosave.cell-dirty")];
+        const data = new URLSearchParams();
+        row.querySelectorAll("[name]").forEach((field) => data.append(field.name, field.classList.contains("number-comma") ? unformatComma(field.value) : field.value));
+        try {
+            const response = await fetch(row.dataset.saveUrl, {
+                method: "POST",
+                credentials: "same-origin",
+                headers: {"Accept": "application/json", "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"},
+                body: data.toString(),
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+            updateSavedRow(row, payload);
+            row.dataset.saving = "false";
+            dirtyFields.forEach((field) => {
+                field.classList.remove("cell-dirty", "cell-error");
+                field.removeAttribute("title");
+                field.classList.add("cell-saved-flash");
+                window.setTimeout(() => field.classList.remove("cell-saved-flash"), 900);
+            });
+            updateLastSavedIndicator();
+            if (showSuccess) showSaveMessage("&#51200;&#51109;&#46104;&#50632;&#49845;&#45768;&#45796;.");
+        } catch (error) {
+            console.error("BOM row save failed", error);
+            row.dataset.saving = "false";
+            const message = error.message || "저장에 실패했습니다. 다시 시도해 주세요.";
+            dirtyFields.forEach((field) => { field.classList.add("cell-error"); field.title = message; });
+            showSaveMessage(message, true, {onClick: () => highlightRow(row)});
+        }
+    }
+    window.saveBomRow = saveRow;
+    window.showToast = showSaveMessage;
+
+    function applyKdLocationLock(select) {
+        if (select.disabled) return;
+        const prefix = select.name.split("__")[0];
+        const location = select.closest("tr")?.querySelector(`[name="${prefix}__sourcing_part_location"]`);
+        if (!location) return;
+        if (select.value === "KD") { location.value = ""; location.disabled = true; }
+        else { location.disabled = false; }
+    }
+    function applyKdMaterialDefault(select) {
+        if (select.disabled || select.value !== "KD") return;
+        const prefix = select.name.split("__")[0];
+        if (prefix === "한국") return;
+        const row = select.closest("tr");
+        const material = row?.querySelector(`[name="${prefix}__unit_price_material"]`);
+        const domesticMaterial = row?.querySelector(`[name="한국__unit_price_material"]`);
+        if (!material || !domesticMaterial || material.disabled || material.value !== "") return;
+        material.value = domesticMaterial.value;
+        material.dispatchEvent(new Event("input", {bubbles: true}));
+    }
+    document.querySelectorAll('#grid-container select[name$="__sourcing_part"]').forEach((select) => { applyKdLocationLock(select); applyKdMaterialDefault(select); });
+    document.body.addEventListener("htmx:afterSwap", (event) => {
+        event.target.querySelectorAll('select[name$="__sourcing_part"]').forEach((select) => { applyKdLocationLock(select); applyKdMaterialDefault(select); });
+    });
+
+    document.addEventListener("input", (event) => {
+        if (event.target.matches(".country-search")) {
+            const keyword = event.target.value.trim().toLowerCase();
+            event.target.nextElementSibling?.querySelectorAll(".country-option").forEach((label) => {
+                label.style.display = label.textContent.toLowerCase().includes(keyword) ? "" : "none";
+            });
+        }
+    });
+
+    document.addEventListener("change", (event) => {
+        if (event.target.id === "select-all") {
+            document.querySelectorAll("#grid-container .row-select:not(:disabled), #grid-container .assignment-toggle:not(:disabled)").forEach((box) => { box.checked = event.target.checked; });
+            return;
+        }
+        if (event.target.matches('select[name$="__sourcing_part"]')) { applyKdLocationLock(event.target); applyKdMaterialDefault(event.target); }
+        const field = event.target.closest(".row-autosave");
+        if (field) { field.closest("tr[data-save-url]").dataset.dirty = "true"; field.classList.add("cell-dirty"); field.classList.remove("cell-error"); }
+    });
+
+    document.addEventListener("click", (event) => {
+        const bulkApply = event.target.closest("#bulk-apply-btn");
+        const bulkSave = event.target.closest("#bulk-save-btn");
+        if (bulkApply || bulkSave) {
+            event.preventDefault();
+            const rows = [...document.querySelectorAll("#grid-container tr[data-save-url]")].filter((row) => row.querySelector(".row-select, .assignment-toggle")?.checked);
+            if (!rows.length) { showSaveMessage("적용할 행을 먼저 선택해 주세요.", true); return; }
+            if (bulkApply) {
+                const country = document.getElementById("bulk-country")?.value;
+                const field = document.getElementById("bulk-field")?.value;
+                const value = document.getElementById("bulk-value")?.value;
+                if (value === "") { showSaveMessage("일괄 적용할 값을 입력해 주세요.", true); return; }
+                let appliedRows = 0;
+                rows.forEach((row) => {
+                    const selector = country === "all" ? `[name$="__${field}"]` : `[name="${country}__${field}"]`;
+                    const inputs = [...row.querySelectorAll(selector)].filter((input) => !input.disabled && !(country === "all" && input.name.startsWith("한국__")));
+                    if (!inputs.length) return;
+                    inputs.forEach((input) => {
+                        input.value = input.classList.contains("number-comma") ? formatComma(value) : value;
+                        input.dispatchEvent(new Event("input", {bubbles: true}));
+                    });
+                    appliedRows += 1;
+                });
+                if (!appliedRows) {
+                    showSaveMessage("선택한 행에 적용할 수 있는 항목이 없습니다. 담당 품목 저장 여부와 국가/항목 선택을 확인해 주세요.", true);
+                } else {
+                    showSaveMessage(`${appliedRows}개 행에 값을 적용했습니다. 임시 저장을 눌러 반영하세요.`);
+                }
+            } else {
+                Promise.all(rows.map((row) => saveRow(row))).then(() => showSaveMessage(`${rows.length}개 행을 저장했습니다.`));
+            }
+            return;
+        }
+    });
+    document.addEventListener("input", (event) => {
+        const field = event.target.closest(".row-autosave");
+        if (field) { field.closest("tr[data-save-url]").dataset.dirty = "true"; field.classList.add("cell-dirty"); field.classList.remove("cell-error"); }
+    });
+    window.saveDirtyBomRows = async () => {
+        const rows = [...document.querySelectorAll("#grid-container tr[data-save-url][data-dirty='true']")];
+        if (!rows.length) { showSaveMessage("변경된 입력값이 없습니다."); return; }
+        await Promise.all(rows.map(async (row) => { await saveRow(row); delete row.dataset.dirty; }));
+        showSaveMessage(`${rows.length}개 행을 임시 저장했습니다.`);
+    };
+
+    const NAV_KEYS = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter"];
+    document.addEventListener("keydown", (event) => {
+        if (!NAV_KEYS.includes(event.key)) return;
+        const cell = event.target.closest(".nav-cell");
+        if (!cell) return;
+        const row = cell.closest("tr");
+        let target = null;
+        if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+            const cells = [...row.querySelectorAll(".nav-cell")];
+            target = cells[cells.indexOf(cell) + (event.key === "ArrowLeft" ? -1 : 1)];
+        } else {
+            const sibling = event.key === "ArrowUp" ? row.previousElementSibling : row.nextElementSibling;
+            target = sibling?.querySelector(`[name="${cell.name}"].nav-cell`);
+        }
+        if (target) { event.preventDefault(); target.focus(); target.select?.(); }
+    });
+})();
+</script>
+</body>
+</html>

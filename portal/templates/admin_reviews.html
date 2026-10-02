@@ -1,9 +1,20 @@
-{% extends "base.html" %}
-{% block title %}제출 검토 | 재료비 관리 포탈{% endblock %}
+{% extends "base_new.html" %}
+{% block title %}제출 검토 | TMS Portal{% endblock %}
+{% block page_title %}제출 검토{% endblock %}
 {% block content %}
-<div class="page-heading"><div><p class="eyebrow">REVIEW QUEUE</p><h1>제출 검토</h1><p class="text-muted mb-0">{{ active.name if active else '확정 BOM 없음' }} · 제출 당시 저장된 내용을 기준으로 검토합니다.</p></div><a class="btn btn-outline-secondary" href="{{ url_for('admin.bom_versions') }}"><i class="bi bi-layers"></i> BOM 관리자</a></div>
-<div class="portal-card p-0 overflow-hidden">
-  <table class="table mb-0 align-middle review-table"><thead><tr><th>작성자</th><th>차종 / BOM</th><th>제출일</th><th>상태</th><th>검토</th></tr></thead><tbody>
-  {% for item in submissions if item.status != 'draft' %}<tr><td>{{ item.username }}</td><td>{{ active.vehicle }}<small class="d-block text-muted">{{ active.name }}</small></td><td>{{ item.submitted_at or '-' }}</td><td><span class="badge text-bg-{{ 'success' if item.status == 'approved' else 'warning' if item.status == 'returned' else 'primary' }}">{{ {'submitted':'검토 대기','approved':'승인','returned':'반려'}.get(item.status, item.status) }}</span></td><td><a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.review_detail', submission_id=item.id) }}">내용 보기</a></td></tr>{% else %}<tr><td colspan="5" class="text-center text-muted py-5">검토 요청이 없습니다.</td></tr>{% endfor %}</tbody></table>
+<div class="bg-white rounded-2xl p-6 shadow-sm border-none mb-6 flex justify-between items-center">
+    <div>
+        <p class="text-xs font-bold text-[#A3AED0] tracking-wider">REVIEW QUEUE</p>
+        <p class="text-sm text-[#A3AED0] mt-1">{{ active.name if active else '확정 BOM 없음' }} · 제출 당시 저장된 내용을 기준으로 검토합니다.</p>
+    </div>
+    <a class="btn btn-ghost rounded-xl px-6 font-bold flex items-center gap-2" href="{{ url_for('admin.bom_versions') }}"><i class="bi bi-layers"></i> BOM 관리자</a>
+</div>
+<div class="bg-white rounded-2xl p-6 md:p-8 shadow-sm border-none overflow-x-auto">
+<table class="table table-zebra w-full text-[#1B2559] text-sm">
+<thead><tr class="bg-transparent border-b border-base-content/10"><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-left">작성자</th><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-left">차종 / BOM</th><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-left">제출일</th><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-center">상태</th><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-center">검토</th></tr></thead>
+<tbody>
+{% for item in submissions if item.status != 'draft' %}<tr class="border-b border-base-content/5 hover:bg-base-100/50"><td class="text-left text-sm font-medium">{{ item.username }}</td><td class="text-left text-sm font-medium">{{ active.vehicle }}<small class="block text-[#A3AED0]">{{ active.name }}</small></td><td class="text-left text-sm font-medium">{{ item.submitted_at or '-' }}</td><td class="text-center"><span class="badge badge-lg rounded-lg font-semibold px-3 py-1 border-none {{ 'bg-emerald-50 text-emerald-600' if item.status == 'approved' else 'bg-amber-50 text-amber-600' if item.status in ('returned', 'auto_submitted') else 'bg-blue-50 text-blue-600' }}">{{ {'submitted':'검토 대기','approved':'승인','returned':'반려','auto_submitted':'자동제출'}.get(item.status, item.status) }}</span></td><td class="text-center"><a class="btn btn-ghost btn-sm rounded-xl" href="{{ url_for('admin.review_detail', submission_id=item.id) }}">내용 보기</a></td></tr>{% else %}<tr><td colspan="5" class="text-center text-[#A3AED0] py-5">검토 요청이 없습니다.</td></tr>{% endfor %}
+</tbody>
+</table>
 </div>
 {% endblock %}
