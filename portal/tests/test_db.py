@@ -119,6 +119,19 @@ def test_revision_migrates_user_input_by_name_and_detail_not_part_number(tmp_pat
     assert db.migrate_matching_user_work(conn, source, target) == 1
     assert db.get_user_purchase(conn, "NEW", 22, "한국", user_id, target)["unit_price_material"] == "99"
 
+def test_create_draft_from_active_with_explicit_source_bom_id(tmp_path):
+    conn = db.get_connection(str(tmp_path / "test.db")); db.init_db(conn)
+    first = db.get_active_bom_version(conn)["id"]
+    db.upsert_part(conn, "OLD", 11, 0, "●", {"part_name": "OLD-FILTER", "qty": "2"}, first)
+    db.publish_bom_version(conn, first)
+    second = db.create_draft_from_active(conn, "v2", "NE2", "admin")["id"]
+    db.upsert_part(conn, "NEW", 22, 0, "●", {"part_name": "NEW-FILTER", "qty": "3"}, second)
+    db.publish_bom_version(conn, second)
+    # second is now active; explicitly request the archived first version as source instead.
+    draft = db.create_draft_from_active(conn, "v3", "NE2", "admin", source_bom_id=first)
+    parts = {p["part_no"] for p in db.list_parts(conn, draft["id"])}
+    assert parts == {"OLD"}
+
 def _seed_summary_data(conn):
     db.upsert_part(conn, "P001", 11, 0, "●", {"vehicle": "NE2_NV1", "category": "HVAC", "part_name": "FILTER", "qty": "2"})
     db.upsert_part(conn, "P002", 12, 0, "●", {"vehicle": "NE2_NV1", "category": "TTMM", "part_name": "BRACKET", "qty": "1"})

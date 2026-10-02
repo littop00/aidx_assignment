@@ -396,8 +396,8 @@ def get_bom_version(conn, bom_id):
     row = conn.execute("SELECT * FROM bom_versions WHERE id = ?", (bom_id,)).fetchone()
     return dict(row) if row else None
 
-def create_draft_from_active(conn, name, vehicle, created_by, copy_costs=False):
-    active = get_active_bom_version(conn)
+def create_draft_from_active(conn, name, vehicle, created_by, copy_costs=False, source_bom_id=None):
+    source = get_bom_version(conn, source_bom_id) if source_bom_id else get_active_bom_version(conn)
     next_version = (conn.execute("SELECT COALESCE(MAX(version_no), 0) + 1 AS next_version FROM bom_versions").fetchone()["next_version"])
     now = datetime.datetime.now().isoformat(timespec="seconds")
     cursor = conn.execute(
@@ -405,12 +405,12 @@ def create_draft_from_active(conn, name, vehicle, created_by, copy_costs=False):
         (next_version, name, vehicle, created_by, now),
     )
     bom_id = cursor.lastrowid
-    if active:
+    if source:
         part_names = [name for name, _ in DESIGN_FIELDS if name != "part_no"]
-        conn.execute("INSERT INTO bom_parts (bom_id, part_no, row_num, level_depth, level_marker, " + ", ".join(part_names) + ", manual_row) SELECT ?, part_no, row_num, level_depth, level_marker, " + ", ".join(part_names) + ", manual_row FROM bom_parts WHERE bom_id = ?", (bom_id, active["id"]))
+        conn.execute("INSERT INTO bom_parts (bom_id, part_no, row_num, level_depth, level_marker, " + ", ".join(part_names) + ", manual_row) SELECT ?, part_no, row_num, level_depth, level_marker, " + ", ".join(part_names) + ", manual_row FROM bom_parts WHERE bom_id = ?", (bom_id, source["id"]))
         if copy_costs:
-            conn.execute("INSERT INTO bom_purchase_data SELECT ?, part_no, row_num, country, " + ", ".join(name for name, _ in PURCHASE_FIELDS) + ", updated_at, updated_by FROM bom_purchase_data WHERE bom_id = ?", (bom_id, active["id"]))
-        conn.execute("INSERT INTO bom_version_countries SELECT ?, country, display_order FROM bom_version_countries WHERE bom_version_id = ?", (bom_id, active["id"]))
+            conn.execute("INSERT INTO bom_purchase_data SELECT ?, part_no, row_num, country, " + ", ".join(name for name, _ in PURCHASE_FIELDS) + ", updated_at, updated_by FROM bom_purchase_data WHERE bom_id = ?", (bom_id, source["id"]))
+        conn.execute("INSERT INTO bom_version_countries SELECT ?, country, display_order FROM bom_version_countries WHERE bom_version_id = ?", (bom_id, source["id"]))
     conn.commit()
     return get_bom_version(conn, bom_id)
 
@@ -801,8 +801,10 @@ def add_manual_part(conn, bom_id, anchor_part_no, anchor_row_num, position, fiel
 
 def update_manual_part_fields(conn, bom_id, part_no, row_num, fields):
     """Persist in-grid edits to a manually added row's design fields. Returns the (possibly new) part_no."""
-    design_names = [n for n, _ in DESIGN_FIELDS]
+    design_names = [n for n, _ in DESIGN_FIELDS] + ["level_depth"]
     present = {n: v for n, v in fields.items() if n in design_names}
+    if "level_depth" in present:
+        present["level_depth"] = int(present["level_depth"] or 0)
     if not present:
         return part_no
     new_part_no = (present.get("part_no") or "").strip() or part_no
@@ -817,6 +819,24 @@ def update_manual_part_fields(conn, bom_id, part_no, row_num, fields):
             conn.execute(f"UPDATE {table} SET part_no=? WHERE bom_id=? AND part_no=? AND row_num=?", (new_part_no, bom_id, part_no, row_num))
     conn.commit()
     return new_part_no
+
+def delete_manual_part(conn, bom_id, part_no, row_num):
+    """Remove an administrator-added row and close the row-number gap it leaves."""
+    part = conn.execute("SELECT manual_row FROM bom_parts WHERE bom_id=? AND part_no=? AND row_num=?", (bom_id, part_no, row_num)).fetchone()
+    if not part or not part["manual_row"]:
+        raise ValueError("관리자가 추가한 행만 삭제할 수 있습니다.")
+    conn.execute("PRAGMA foreign_keys = OFF")
+    conn.execute("DELETE FROM bom_parts WHERE bom_id=? AND part_no=? AND row_num=?", (bom_id, part_no, row_num))
+    for table in ("bom_purchase_data", "bom_user_purchase_data", "bom_part_assignments"):
+        conn.execute(f"DELETE FROM {table} WHERE bom_id=? AND part_no=? AND row_num=?", (bom_id, part_no, row_num))
+    rows = conn.execute("SELECT part_no, row_num FROM bom_parts WHERE bom_id=? AND row_num>? ORDER BY row_num ASC", (bom_id, row_num)).fetchall()
+    for row in rows:
+        conn.execute("UPDATE bom_parts SET row_num=? WHERE bom_id=? AND part_no=? AND row_num=?", (row["row_num"] - 1, bom_id, row["part_no"], row["row_num"]))
+        conn.execute("UPDATE bom_purchase_data SET row_num=? WHERE bom_id=? AND part_no=? AND row_num=?", (row["row_num"] - 1, bom_id, row["part_no"], row["row_num"]))
+        conn.execute("UPDATE bom_user_purchase_data SET row_num=? WHERE bom_id=? AND part_no=? AND row_num=?", (row["row_num"] - 1, bom_id, row["part_no"], row["row_num"]))
+        conn.execute("UPDATE bom_part_assignments SET row_num=? WHERE bom_id=? AND part_no=? AND row_num=?", (row["row_num"] - 1, bom_id, row["part_no"], row["row_num"]))
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.commit()
 
 def list_assigned_parts(conn, bom_id, user_id):
     """2차 상세지정된(explicit) 품목만 반환 - 제출 필수 항목/제출 스냅샷 기준."""

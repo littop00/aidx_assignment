@@ -31,28 +31,23 @@
     <nav class="p-4">
       <ul class="menu menu-md w-full gap-1 p-0">
         <li class="menu-title text-[#A3AED0] font-bold text-xs tracking-wider mb-2 px-2">DASHBOARD</li>
-        <li x-data="{ open: {{ 'true' if request.endpoint in ('home.index', 'home.vendor_dashboard') else 'false' }} }">
-          <a href="#" @click.prevent="open = !open" class="flex items-center justify-between gap-3 px-4 py-3 rounded-xl font-medium cursor-pointer {% if request.endpoint in ('home.index', 'home.vendor_dashboard') %}text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
-            <span class="flex items-center gap-3"><i class="bi bi-speedometer2 text-lg"></i> 대시보드</span>
+        <li x-data="{ open: {{ 'true' if request.endpoint in ('bom.summary_page', 'bom.stage_summary') else 'false' }} }">
+          <a href="#" @click.prevent="open = !open" class="flex items-center justify-between gap-3 px-4 py-3 rounded-xl font-medium cursor-pointer {% if request.endpoint in ('bom.summary_page', 'bom.stage_summary') %}text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
+            <span class="flex items-center gap-3"><i class="bi bi-pie-chart text-lg"></i> 재료비 Summary</span>
             <i class="bi text-xs" :class="open ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
           </a>
           <ul x-show="open" x-cloak class="pl-8 mt-1 flex flex-col gap-1">
             <li>
-              <a href="{{ url_for('home.index') }}" class="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium {% if request.endpoint == 'home.index' %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
-                차종별 재료비 현황
+              <a href="{{ url_for('bom.summary_page') }}" class="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium {% if request.endpoint == 'bom.summary_page' %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
+                차종별 SUMMARY
               </a>
             </li>
             <li>
-              <a href="{{ url_for('home.vendor_dashboard') }}" class="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium {% if request.endpoint == 'home.vendor_dashboard' %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
-                차종별 협력사 현황
+              <a href="{{ url_for('bom.stage_summary') }}" class="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium {% if request.endpoint == 'bom.stage_summary' %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
+                단계별 SUMMARY
               </a>
             </li>
           </ul>
-        </li>
-        <li>
-          <a href="{{ url_for('bom.summary_page') }}" class="flex items-center gap-3 px-4 py-3 rounded-xl font-medium {% if request.endpoint == 'bom.summary_page' %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
-            <i class="bi bi-pie-chart text-lg"></i> 재료비 Summary
-          </a>
         </li>
 
         <li class="menu-title text-[#A3AED0] font-bold text-xs tracking-wider mt-4 mb-2 px-2">수주 BOM</li>
