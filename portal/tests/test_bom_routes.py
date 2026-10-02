@@ -259,6 +259,19 @@ def test_bom_index_groups_categories_by_major(client, admin_user, app):
     assert 'value="EVAP"' in tail
 
 
+def test_grid_row_cells_are_keyboard_navigable(client, admin_user, app):
+    _login(client, admin_user)
+    conn = db.get_connection(app.config["DB_PATH"])
+    db.upsert_part(conn, "P001", 11, 0, "●", {"part_name": "FILTER", "qty": "1"})
+    conn.close()
+
+    resp = client.get("/bom/grid?country=한국")
+    html = resp.get_data(as_text=True)
+    assert 'name="한국__unit_price_material"' in html
+    unit_price_idx = html.index('name="한국__unit_price_material"')
+    assert "nav-cell" in html[unit_price_idx:unit_price_idx + 300]
+
+
 def test_summary_groups_by_category_with_grand_total(client, admin_user, app):
     _login(client, admin_user)
     conn = db.get_connection(app.config["DB_PATH"])
