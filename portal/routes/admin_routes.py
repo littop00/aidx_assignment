@@ -50,8 +50,9 @@ def create_draft():
     name = (request.form.get("name") or "새 BOM").strip()
     vehicle = (request.form.get("vehicle") or "").strip()
     copy_costs = request.form.get("copy_costs") == "on"
+    source_bom_id = request.form.get("source_bom_id", type=int) if copy_costs else None
     conn = db.get_connection(current_app.config["DB_PATH"])
-    draft = db.create_draft_from_active(conn, name, vehicle, current_user.username, copy_costs)
+    draft = db.create_draft_from_active(conn, name, vehicle, current_user.username, copy_costs, source_bom_id)
     conn.close()
     flash(f"{draft['name']} 초안을 만들었습니다.")
     return redirect(url_for("admin.bom_versions"))

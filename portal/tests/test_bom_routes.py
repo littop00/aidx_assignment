@@ -95,24 +95,23 @@ def test_grid_paginates_results(client, admin_user, app):
     assert resp2.data.count(b"<tr id=") == 5
 
 
-def test_grid_first_page_has_scroll_sentinel_and_no_pagination_nav(client, admin_user, app):
+def test_grid_shows_pagination_nav_and_no_scroll_sentinel(client, admin_user, app):
     _login(client, admin_user)
     _seed_parts(app, n=25)
     resp = client.get("/bom/grid?country=한국&page=1")
     assert resp.status_code == 200
-    assert b"scroll-sentinel" in resp.data
-    assert b"grid-pagination" not in resp.data
+    assert b"grid-pagination" in resp.data
+    assert b"scroll-sentinel" not in resp.data
     assert resp.data.count(b"<tr id=") == 20
 
 
-def test_grid_next_page_returns_rows_fragment_without_table_shell(client, admin_user, app):
+def test_grid_next_page_still_renders_full_table_shell(client, admin_user, app):
     _login(client, admin_user)
     _seed_parts(app, n=25)
     resp = client.get("/bom/grid?country=한국&page=2")
     assert resp.status_code == 200
-    assert b"<table" not in resp.data
+    assert b"<table" in resp.data
     assert resp.data.count(b"<tr id=") == 5
-    assert b"scroll-sentinel" not in resp.data  # last page, no more to load
 
 
 def test_grid_respects_page_size_param(client, admin_user, app):
@@ -369,6 +368,53 @@ def test_save_row_updates_manual_row_design_fields(client, admin_user, app):
     assert saved["vehicle"] == "NE2"
     assert saved["category"] == "HVAC"
     assert saved["qty"] == "5"
+
+
+def test_delete_row_removes_manual_row_and_closes_gap(client, admin_user, app):
+    _login(client, admin_user)
+    conn = db.get_connection(app.config["DB_PATH"])
+    db.upsert_part(conn, "P001", 11, 0, "●", {"part_name": "ANCHOR", "qty": "1"})
+    db.upsert_part(conn, "P002", 12, 0, "●", {"part_name": "AFTER", "qty": "1"})
+    active = db.get_active_bom_version(conn)
+    part = db.add_manual_part(conn, active["id"], "P001", 11, "after", {"part_name": "TEMP"})
+    conn.close()
+    added_row_num = part["row_num"]
+
+    resp = client.post("/bom/row/delete", data={"row_num": str(added_row_num)})
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+
+    conn = db.get_connection(app.config["DB_PATH"])
+    deleted = db.get_part_by_row_num(conn, added_row_num, active["id"])
+    after = db.get_part(conn, "P002", added_row_num, active["id"])
+    conn.close()
+    assert deleted is None or deleted["part_no"] != "TEMP"
+    assert after is not None and after["part_name"] == "AFTER"
+
+
+def test_delete_row_rejects_non_manual_row(client, admin_user, app):
+    _login(client, admin_user)
+    conn = db.get_connection(app.config["DB_PATH"])
+    db.upsert_part(conn, "P001", 11, 0, "●", {"part_name": "ANCHOR", "qty": "1"})
+    conn.close()
+
+    resp = client.post("/bom/row/delete", data={"row_num": "11"})
+    assert resp.status_code == 422
+    assert resp.get_json()["ok"] is False
+
+    conn = db.get_connection(app.config["DB_PATH"])
+    still_there = db.get_part(conn, "P001", 11)
+    conn.close()
+    assert still_there is not None
+
+
+def test_delete_row_requires_admin(client, app):
+    conn = db.get_connection(app.config["DB_PATH"])
+    db.create_user(conn, "worker", generate_password_hash("worker-pass"), role="user")
+    conn.close()
+    client.post("/login", data={"username": "worker", "password": "worker-pass"})
+
+    resp = client.post("/bom/row/delete", data={"row_num": "11"})
+    assert resp.status_code == 403
 
 
 def test_bom_index_has_group_only_filter_checkbox(client, admin_user, app):

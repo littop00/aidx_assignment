@@ -257,15 +257,21 @@ def grid():
     start = (page - 1) * page_size
     page_rows = all_rows[start:start + page_size]
 
+    window_size = 5
+    window_start = max(1, page - window_size // 2)
+    window_end = min(total_pages, window_start + window_size - 1)
+    window_start = max(1, window_end - window_size + 1)
+
     material_sum = sum(sum(r["country_data"][c]["material_cost"] for c in display_countries) for r in all_rows)
     logistics_sum = sum(sum(r["country_data"][c]["logistics_cost"] for c in selected_countries) for r in all_rows)
     total_sum = sum(sum(r["country_data"][c]["total_cost"] for c in display_countries) for r in all_rows)
 
     return render_template(
-        "partials/_grid_rows.html" if page > 1 else "partials/_grid.html",
+        "partials/_grid.html",
         rows=page_rows, country=country, status=status, search=search,
         page=page, total_pages=total_pages, total=total,
-        page_size=page_size,
+        page_size=page_size, page_size_options=PAGE_SIZE_OPTIONS,
+        window_start=window_start, window_end=window_end,
         material_sum=material_sum, logistics_sum=logistics_sum, total_sum=total_sum,
         # Reuse this list for both case-column management and sourcing choices.
         countries=overseas_countries,
@@ -302,6 +308,28 @@ def add_row():
         fields["part_no"] = (request.form.get("part_no") or "").strip()
         part = db.add_manual_part(conn, active["id"], anchor["part_no"], anchor["row_num"], request.form.get("position", "after"), fields)
         result = {"ok": True, "row_num": part["row_num"]}
+    except ValueError as exc:
+        result = {"ok": False, "message": str(exc)}
+    conn.close()
+    return jsonify(result), (200 if result["ok"] else 422)
+
+@bom_bp.route("/row/delete", methods=["POST"])
+@login_required
+def delete_row():
+    if current_user.role != "admin":
+        return jsonify({"ok": False, "message": "관리자만 BOM 행을 삭제할 수 있습니다."}), 403
+    conn = db.get_connection(current_app.config["DB_PATH"])
+    active = db.get_active_bom_version(conn)
+    row_nums = request.form.getlist("row_num", type=int)
+    if not active or not row_nums:
+        conn.close()
+        return jsonify({"ok": False, "message": "삭제할 행을 찾을 수 없습니다."}), 404
+    try:
+        for row_num in sorted(row_nums, reverse=True):
+            part = db.get_part_by_row_num(conn, row_num, active["id"])
+            if part:
+                db.delete_manual_part(conn, active["id"], part["part_no"], row_num)
+        result = {"ok": True}
     except ValueError as exc:
         result = {"ok": False, "message": str(exc)}
     conn.close()
@@ -355,6 +383,11 @@ def summary_page():
         active_version=active_version,
     )
 
+@bom_bp.route("/stage-summary")
+@login_required
+def stage_summary():
+    return render_template("stage_summary_placeholder.html")
+
 @bom_bp.route("/row/<part_no>/<int:row_num>/<country>", methods=["POST"])
 @bom_bp.route("/row/by-number/<int:row_num>/<country>", methods=["POST"])
 @login_required
@@ -382,6 +415,8 @@ def save_row(row_num, country, part_no=None):
         return jsonify({"error": "그룹 담당자만 상위 품목의 재료비를 입력할 수 있습니다."}), 403
     if current_user.role == "admin" and part.get("manual_row"):
         design_updates = {name: request.form.get(name) for name, _ in DESIGN_FIELDS if name in request.form}
+        if "level_depth" in request.form:
+            design_updates["level_depth"] = request.form.get("level_depth")
         if design_updates:
             part_no = db.update_manual_part_fields(conn, active_version["id"], part_no, row_num, design_updates)
     editable_fields = ("currency", "unit_price_material", "unit_price_logistics", "tariff_rate", "mold_cost", "sourcing_part", "sourcing_assembly", "sourcing_part_location", "sourcing_assembly_location", "special_fx_rate", "special_fx_reason", "note")

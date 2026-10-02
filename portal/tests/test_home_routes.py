@@ -44,10 +44,12 @@ def test_vendor_dashboard_shows_placeholder(client, admin_user):
 def test_dashboard_nav_includes_restructured_sections(client, admin_user):
     _login(client, admin_user)
     resp = client.get("/")
-    assert b'href="/dashboard/vendors"' in resp.data
+    assert b'href="/dashboard/vendors"' not in resp.data
     assert b'href="/bom/summary-page"' in resp.data
+    assert b'href="/bom/stage-summary"' in resp.data
     assert b'href="/bid-bom/"' in resp.data
-    assert "차종별 재료비 현황".encode() in resp.data
+    assert "차종별 SUMMARY".encode() in resp.data
+    assert "단계별 SUMMARY".encode() in resp.data
     assert "수주 BOM".encode() in resp.data
 
 

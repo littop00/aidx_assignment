@@ -166,7 +166,7 @@ tr.row-highlight td { animation:row-highlight-flash 1.6s ease; }
 
 .filter-bar .filter-form {
     display: grid;
-    grid-template-columns: repeat(4, max-content) minmax(260px, 1fr);
+    grid-template-columns: repeat(5, max-content) minmax(260px, 1fr);
     gap: .9rem 1.25rem;
     align-items: flex-end;
 }
@@ -390,7 +390,22 @@ tr.row-highlight td { animation:row-highlight-flash 1.6s ease; }
 .bom-table td.level-cell { min-width: 34px; width: 34px; text-align: center; border: 1px solid var(--portal-border); }
 .level-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--portal-accent); }
 .level-header { min-width: 34px; width: 34px; text-align: center; border-left: 1px solid var(--portal-border); border-right: 1px solid var(--portal-border); }
-.part-name-cell { width: 210px; min-width: 210px; }
+.part-name-cell { width: 260px; min-width: 260px; }
+.manual-name-edit { display: inline-flex; align-items: center; gap: .4rem; vertical-align: middle; }
+.bom-table select.level-depth-select {
+    min-width: 56px;
+    width: 56px;
+    border-radius: 2px;
+    border: 1px solid var(--portal-border);
+    background-color: transparent;
+    box-shadow: none;
+}
+.bom-table select.level-depth-select:focus {
+    border-color: var(--portal-accent);
+    outline: none;
+    box-shadow: 0 0 0 1px var(--portal-accent);
+    background: #fff;
+}
 
 /* 좌측 틀고정: 체크박스~품명 (스크롤해도 계속 보임) */
 .bom-table th, .bom-table td { box-sizing: border-box; }
@@ -407,7 +422,7 @@ tr.row-highlight td { animation:row-highlight-flash 1.6s ease; }
 .bom-table thead tr:last-child th:nth-child(10), .bom-table tbody tr[data-save-url] td:nth-child(10) { position: sticky; left: 650px; width: 34px; }
 .bom-table thead tr:last-child th:nth-child(11), .bom-table tbody tr[data-save-url] td:nth-child(11) { position: sticky; left: 684px; width: 34px; }
 .bom-table thead tr:last-child th:nth-child(12), .bom-table tbody tr[data-save-url] td:nth-child(12) {
-    position: sticky; left: 718px; width: 210px;
+    position: sticky; left: 718px; width: 260px;
     border-right: 1px solid var(--portal-border);
     box-shadow: 4px 0 6px -4px rgba(0, 0, 0, .25);
 }
@@ -419,6 +434,31 @@ tr.row-highlight td { animation:row-highlight-flash 1.6s ease; }
 
 .bom-table input:not([type="checkbox"]), .bom-table select {
     min-width: 90px;
+}
+
+.bom-table input:not([type="checkbox"]) {
+    border-radius: 2px;
+    border: 1px solid var(--portal-border);
+    background: transparent;
+    box-shadow: none;
+}
+.bom-table input:not([type="checkbox"]):focus {
+    border-color: var(--portal-accent);
+    outline: none;
+    box-shadow: 0 0 0 1px var(--portal-accent);
+    background: #fff;
+}
+.bom-table input:not([type="checkbox"]):disabled {
+    border-color: transparent;
+    background: transparent;
+    color: var(--portal-muted);
+}
+
+.bom-table select[name$="__currency"],
+.bom-table input[name$="__tariff_rate"] {
+    width: 70px;
+    min-width: 70px;
+    max-width: 70px;
 }
 
 .bom-table .form-control,

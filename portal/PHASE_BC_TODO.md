@@ -3,17 +3,18 @@
 > 상세 스펙은 `PHASE2_PLAN.md` 참고. 이 문서는 내일 작업 시작점 메모.
 > Phase A는 완료됨 (nav 재구조, 커밋 완료, 테스트 76/76 통과).
 
-## Phase B — 수주 BOM UI/UX 개선 (B1~B7)
+## Phase B — 수주 BOM UI/UX 개선 (B1~B8) — 전체 완료
 
 | # | 항목 | 관련 파일 |
 |---|------|-----------|
 | B1 | 대분류/소분류 계층 필터 | `routes/bom_routes.py` `_filtered_rows()`/`grid()` (61-276행), `templates/bom.html` 필터바 (category-menu, 24행), `categories.py` `major_of()`/`group_of()` |
 | B2 | 엑셀식 방향키 네비게이션 | `templates/my_bom.html`, `templates/partials/_row.html` (입력 셀 구조), JS keydown 핸들러 신규 작성 필요 |
-| B3 | 무한스크롤 (페이지네이션 제거) | `templates/partials/_grid.html` (실제 경로 재확인 필요 — 이전 세션에서 경로 오타로 못 읽음), `grid()` 라우트 page/page_size 로직 (bom_routes.py 213-276행) 교체 |
+| B3 | 페이지네이션 (버튼식) | 완료. 무한스크롤 구현했었으나 로딩 렉으로 버튼 페이지네이션으로 원복. `grid()`는 항상 `partials/_grid.html` 렌더, `window_start`/`window_end` 페이지 버튼 윈도우 계산 복원, `bom.html`/`my_bom.html`에 "페이지 행 수" select 복원 |
 | B4 | 국내(한국) 통화/특별환율 노출 | `templates/partials/_row.html` 한국 컬럼 하드코딩 부분. DB 컬럼 `special_fx_rate`/`special_fx_reason`/`currency` 이미 존재 — 스키마 변경 불필요, 템플릿 노출만 |
 | B5 | 비고(note) 길이제한 해제 | 비고 필드 템플릿 내 `maxlength` 속성 찾아서 제거. DB 제약 없음 확인됨 |
 | B6 | 그룹핑 UX (그룹만 보기 필터 + 상위행 클릭만으로 해제) | `db.py` `group_for_part`/`group_members`/관련 함수, `routes/bom_routes.py` `/groups/<part_no>/<row_num>`, `/groups/selected` |
 | B7 | 관리자 인라인 행추가 — 전체 필드 | `routes/bom_routes.py` `add_row()` / `db.add_manual_part()` — 현재 4필드(part_name/part_no/qty/spec)만 지원 → `columns.py`의 `DESIGN_FIELDS` 전체로 확장 |
+| B8 | 초안 생성시 "기존 입력값 이관" 소스 BOM 선택 드랍다운 | 완료. `templates/admin_boms.html` 체크박스 켜지면 `source_bom_id` 드랍다운(published/archived 버전) 노출, `routes/admin_routes.py` `create_draft()` → `db.create_draft_from_active(..., source_bom_id=...)`로 전달. 미선택시 기존처럼 active 버전 사용 |
 
 **내일 시작 순서:**
 1. `templates/partials/_grid.html` 실제 경로 확인

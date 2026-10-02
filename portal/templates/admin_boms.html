@@ -30,6 +30,7 @@
     <input name="name" x-ref="draftName" class="input input-bordered w-full rounded-xl bg-base-100 border-base-300 focus:border-primary focus:outline-none transition-all text-sm py-2 px-4" placeholder="예: NE2_NV1 BOM v2" required>
     <input name="vehicle" x-ref="draftVehicle" class="input input-bordered w-full rounded-xl bg-base-100 border-base-300 focus:border-primary focus:outline-none transition-all text-sm py-2 px-4" placeholder="차종">
     <label class="flex items-center gap-2 text-sm text-[#1B2559]"><input class="checkbox checkbox-sm checkbox-primary" type="checkbox" name="copy_costs" x-model="copy" @change="if(copy){ $refs.draftName.value = $refs.draftName.value || activeName; $refs.draftVehicle.value = $refs.draftVehicle.value || activeVehicle }"> 기존 입력값 이관</label>
+    <select name="source_bom_id" x-show="copy" x-cloak class="select select-bordered w-full rounded-xl bg-base-100 border-base-300 focus:border-primary focus:outline-none transition-all text-sm py-2 px-4"><option value="">현재 배포 중 BOM (기본)</option>{% for version in versions if version.status in ('published', 'archived') %}<option value="{{ version.id }}">Rev.{{ version.version_no }} · {{ version.name }}{% if version.is_confirmed %} (확정){% endif %}</option>{% endfor %}</select>
     <button class="btn btn-primary btn-md rounded-xl font-bold w-full" type="submit">생성</button>
     <button type="button" class="btn btn-ghost btn-md rounded-xl w-full" @click="draftOpen = false">취소</button>
   </form>
