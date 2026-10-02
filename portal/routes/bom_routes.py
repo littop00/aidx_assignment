@@ -5,6 +5,7 @@ from flask_login import login_required, current_user
 import db
 import calc
 from columns import COUNTRIES, DESIGN_FIELDS, DESIGN_FIELD_LABELS
+from categories import major_of
 
 bom_bp = Blueprint("bom", __name__, url_prefix="/bom")
 
@@ -58,7 +59,19 @@ def _build_row_view(part, purchase):
     row["note"] = purchase.get("note") or ""
     return row
 
-def _filtered_rows(conn, countries, status, search, categories=None, user_id=None, assigned_only=False, bom_id=None):
+def _category_tree(categories):
+    """Group flat sub-category list into [{major, categories}] using categories.major_of()."""
+    tree = {}
+    order = []
+    for c in categories:
+        major = major_of(c)
+        if major not in tree:
+            tree[major] = []
+            order.append(major)
+        tree[major].append(c)
+    return [{"major": m, "categories": tree[m]} for m in order]
+
+def _filtered_rows(conn, countries, status, search, categories=None, user_id=None, assigned_only=False, bom_id=None, group_only=False):
     primary_country = countries[0]
     parts = db.list_parts(conn, bom_id)
     keyword = (search or "").strip().lower()
@@ -84,6 +97,8 @@ def _filtered_rows(conn, countries, status, search, categories=None, user_id=Non
         row["target_user_id"] = owner["id"] if owner else None
         row["target_user_name"] = owner["username"] if owner else None
         group = db.group_for_part(conn, active["id"], p["part_no"], p["row_num"]) if active else None
+        if group_only and not group:
+            continue
         row["group"] = group
         row["is_group_parent"] = bool(group and group["parent_part_no"] == p["part_no"] and group["parent_row_num"] == p["row_num"])
         row["group_child"] = bool(group and not row["is_group_parent"])
@@ -135,7 +150,7 @@ def index():
     categories = sorted(category_counts)
     return render_template(
         "bom.html", countries=COUNTRIES, overseas_countries=overseas_countries, suggestions=suggestions,
-        categories=categories, category_counts=category_counts,
+        categories=categories, category_counts=category_counts, category_tree=_category_tree(categories),
         latest_bom_upload=latest_bom_upload, active_version=view_version, submission=submission,
         can_edit=(not viewing_history) and current_user.role != "admin" and (submission and submission["status"] in ("draft", "returned")),
         progress=progress,
@@ -193,7 +208,7 @@ def my_bom():
     categories = sorted(category_counts)
     return render_template(
         "my_bom.html", countries=COUNTRIES, suggestions=suggestions,
-        categories=categories, category_counts=category_counts,
+        categories=categories, category_counts=category_counts, category_tree=_category_tree(categories),
         active_version=active_version, submission=submission,
         can_edit=bool(submission and submission["status"] in ("draft", "returned")),
         progress=progress,
