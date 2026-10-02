@@ -20,46 +20,6 @@
     <p class="text-sm text-[#A3AED0] mt-1">배포된 BOM의 국가별 원가를 입력하고 검토 요청을 보냅니다.</p>
     {% if active_version and current_user.role == 'admin' and submission.review_comment %}<small class="review-note"><i class="bi bi-arrow-return-left"></i> {{ submission.review_comment }}</small>{% endif %}
 </div>
-{% if active_version and current_user.role == 'admin' %}
-<div class="bg-white rounded-2xl p-4 shadow-sm border-none mb-4">
-  <button type="button" class="btn btn-primary btn-sm rounded-xl font-bold" onclick="document.getElementById('add-bom-row-modal').showModal()">+ 행 추가</button>
-</div>
-<dialog id="add-bom-row-modal" class="modal">
-  <div class="modal-box max-w-3xl">
-    <h3 class="font-bold text-lg text-[#1B2559] mb-3">BOM 행 추가</h3>
-    <form id="add-bom-row-form" method="dialog">
-      <fieldset class="mb-3">
-        <legend class="text-xs font-semibold text-[#A3AED0] mb-1">위치</legend>
-        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          <div class="form-control"><label class="text-xs text-[#A3AED0] mb-1 block">기준 품번(행)</label><input type="number" name="anchor_row_num" required class="input input-bordered input-sm rounded-xl w-full"></div>
-          <div class="form-control"><label class="text-xs text-[#A3AED0] mb-1 block">위치</label><select name="position" class="select select-bordered select-sm rounded-xl w-full"><option value="after">다음에</option><option value="before">이전에</option></select></div>
-        </div>
-      </fieldset>
-      <fieldset class="mb-3">
-        <legend class="text-xs font-semibold text-[#A3AED0] mb-1">기본 정보</legend>
-        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          <div class="form-control"><label class="text-xs text-[#A3AED0] mb-1 block">품명</label><input type="text" name="part_name" required class="input input-bordered input-sm rounded-xl w-full"></div>
-          <div class="form-control"><label class="text-xs text-[#A3AED0] mb-1 block">품번</label><input type="text" name="part_no" class="input input-bordered input-sm rounded-xl w-full"></div>
-          <div class="form-control"><label class="text-xs text-[#A3AED0] mb-1 block">차종</label><input type="text" name="vehicle" class="input input-bordered input-sm rounded-xl w-full"></div>
-          <div class="form-control"><label class="text-xs text-[#A3AED0] mb-1 block">구분</label><input type="text" name="category" class="input input-bordered input-sm rounded-xl w-full"></div>
-          <div class="form-control"><label class="text-xs text-[#A3AED0] mb-1 block">수량</label><input type="text" name="qty" class="input input-bordered input-sm rounded-xl w-full"></div>
-        </div>
-      </fieldset>
-      <fieldset class="mb-3">
-        <legend class="text-xs font-semibold text-[#A3AED0] mb-1">상세 정보</legend>
-        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {% for name, label in design_field_labels.items() if name not in ("vehicle", "category", "qty") %}<div class="form-control"><label class="text-xs text-[#A3AED0] mb-1 block">{{ label }}</label><input type="text" name="{{ name }}" class="input input-bordered input-sm rounded-xl w-full"></div>{% endfor %}
-        </div>
-      </fieldset>
-      <div class="modal-action">
-        <button type="button" class="btn btn-ghost btn-sm rounded-xl" onclick="document.getElementById('add-bom-row-modal').close()">취소</button>
-        <button type="submit" class="btn btn-primary btn-sm rounded-xl font-bold">추가</button>
-      </div>
-    </form>
-  </div>
-  <form method="dialog" class="modal-backdrop"><button>close</button></form>
-</dialog>
-{% endif %}
 {% if active_version %}
 <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between bg-white rounded-2xl p-4 shadow-sm border-none mb-4 gap-4 filter-bar"><form id="filter-form" class="filter-form" hx-get="{{ url_for('bom.grid') }}" hx-target="#grid-container" hx-trigger="change, submit">{% if viewing_history %}<input type="hidden" name="version_id" value="{{ view_version.id }}">{% endif %}<div class="filter-group"><label class="text-xs font-medium text-[#A3AED0] mb-1 block">입력 상태</label><select name="status" class="select select-bordered select-sm rounded-xl bg-base-100 border-base-300"><option value="all">전체</option><option value="done">입력 완료</option><option value="missing">미입력만 보기</option></select></div><div class="filter-group" x-data="{open: false}"><label class="text-xs font-medium text-[#A3AED0] mb-1 block">구분 (대분류, 다중선택)</label><div class="relative"><button id="category-select-button" class="btn btn-ghost btn-sm rounded-xl border border-[#E0E5F2] category-select-button" type="button" @click="open = !open" @click.outside="open = false">전체 구분</button><div class="category-menu absolute z-50 bg-white p-2" x-show="open" x-transition x-cloak>{% for c in categories %}<div class="category-check"><input class="checkbox checkbox-xs checkbox-primary" type="checkbox" name="category" value="{{ c }}" id="cat-{{ c }}"><label class="form-check-label text-sm" for="cat-{{ c }}">{{ c }}</label><span class="category-count-badge">{{ category_counts.get(c, 0) }}</span></div>{% endfor %}</div></div></div><div class="filter-group" x-data="{open: false}"><label class="text-xs font-medium text-[#A3AED0] mb-1 block">세부구분 (소분류, 다중선택)</label><div class="relative"><button id="subcategory-select-button" class="btn btn-ghost btn-sm rounded-xl border border-[#E0E5F2] category-select-button" type="button" @click="open = !open" @click.outside="open = false">전체 세부구분</button><div class="category-menu absolute z-50 bg-white p-2" x-show="open" x-transition x-cloak>{% for c in sub_categories %}<div class="category-check"><input class="checkbox checkbox-xs checkbox-primary" type="checkbox" name="sub_category" value="{{ c }}" id="subcat-{{ c }}"><label class="form-check-label text-sm" for="subcat-{{ c }}">{{ c }}</label><span class="category-count-badge">{{ sub_category_counts.get(c, 0) }}</span></div>{% endfor %}</div></div></div><div class="filter-group" x-data="{open: false}"><label class="text-xs font-medium text-[#A3AED0] mb-1 block">국가 (다중선택)</label><div class="relative"><button id="country-select-button" class="btn btn-ghost btn-sm rounded-xl border border-[#E0E5F2] category-select-button" type="button" @click="open = !open" @click.outside="open = false">전체 국가</button><div class="category-menu absolute z-50 bg-white p-2" x-show="open" x-transition x-cloak><div class="category-check"><input class="checkbox checkbox-xs checkbox-primary" type="checkbox" id="country-select-all-toggle" checked><label class="form-check-label text-sm" for="country-select-all-toggle">전체</label></div><div class="category-check"><input class="checkbox checkbox-xs checkbox-primary" type="checkbox" id="country-domestic-toggle" checked><label class="form-check-label text-sm" for="country-domestic-toggle">국내</label></div>{% for c in overseas_countries %}<div class="category-check"><input class="checkbox checkbox-xs checkbox-primary" type="checkbox" name="country" value="{{ c }}" id="country-{{ loop.index }}" checked><label class="form-check-label text-sm" for="country-{{ loop.index }}">{{ c }}</label></div>{% endfor %}</div></div></div><div class="filter-group"><label class="text-xs font-medium text-[#A3AED0] mb-1 block">그룹</label><label class="label cursor-pointer gap-2"><input type="checkbox" name="group_only" value="1" class="checkbox checkbox-sm checkbox-primary"><span class="text-sm">그룹 지정된 품목만 보기</span></label></div><div class="filter-group filter-search"><label class="text-xs font-medium text-[#A3AED0] mb-1 block">검색</label><div class="search-input-group"><input type="text" name="search" class="input input-bordered input-sm rounded-xl bg-base-100 border-base-300 focus:border-primary focus:outline-none transition-all" placeholder="품번 / 품명 / 구분 검색" list="part-suggestions" hx-get="{{ url_for('bom.grid') }}" hx-target="#grid-container" hx-trigger="keyup changed delay:400ms"><button type="submit" class="btn btn-primary btn-sm rounded-xl" aria-label="검색"><i class="bi bi-search"></i></button></div></div></form></div><div id="grid-container" hx-get="{{ url_for('bom.grid') }}" hx-trigger="load" hx-include="#filter-form"><div class="grid-loading"><i class="bi bi-hourglass-split"></i> 불러오는 중…</div></div>
 {% else %}<section class="bg-white rounded-2xl p-6 shadow-sm border-none mb-6 empty-state"><i class="bi bi-exclamation-octagon"></i><div><strong class="text-[#1B2559]">현재 사용할 수 있는 BOM이 없습니다.</strong><p class="text-[#A3AED0]">관리자가 배포를 취소했거나 새 BOM을 준비 중입니다. 알림을 확인해 주세요.</p></div></section>{% endif %}
@@ -144,18 +104,18 @@ document.addEventListener('click', async (event) => {
     }
   }
 });
-document.addEventListener('submit', async (event) => {
-  const form = event.target.closest('#add-bom-row-form');
-  if (!form) return;
-  event.preventDefault();
+document.addEventListener('click', async (event) => {
+  const button = event.target.closest('#quick-add-row-btn');
+  if (!button) return;
+  const selected = [...document.querySelectorAll('.row-select:checked')];
+  if (selected.length !== 1) { window.showToast?.('행을 추가할 기준 행을 1개 선택하세요.', true); return; }
   try {
-    const response = await fetch('{{ url_for('bom.add_row') }}', {method: 'POST', headers: {'Accept': 'application/json'}, body: new FormData(form)});
+    const data = new URLSearchParams({anchor_row_num: selected[0].dataset.rowNum, position: 'after'});
+    const response = await fetch('{{ url_for('bom.add_row') }}', {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json'}, body: data});
     const result = await response.json();
     if (!response.ok) throw new Error(result.message);
     htmx.trigger(document.getElementById('filter-form'), 'change');
-    form.reset();
-    document.getElementById('add-bom-row-modal').close();
-  } catch (error) { alert(error.message || 'BOM 행 추가에 실패했습니다.'); }
+  } catch (error) { window.showToast?.(error.message || 'BOM 행 추가에 실패했습니다.', true); }
 });
 </script>
 <script>
@@ -173,6 +133,7 @@ document.addEventListener('click', (event) => {
 });
 document.addEventListener('input', async (event) => {
   const field = event.target.closest('.row-autosave'); if (!field) return;
+  if (!field.name.includes('__')) return;
   const row = field.closest('tr[data-save-url]');
   const rowNum = row.querySelector('[data-row-num]')?.dataset.rowNum;
   const country = field.name.split('__')[0]; if (!rowNum || !country) return;

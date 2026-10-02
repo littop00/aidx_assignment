@@ -31,6 +31,7 @@ def _build_row_view(part, purchase):
         "level_marker": part.get("level_marker") or "",
         "category": part.get("category") or "",
         "qty": _to_float(part.get("qty")),
+        "manual_row": bool(part.get("manual_row")),
         "status_done": has_price,
         "currency": purchase.get("currency") or "KRW",
         "unit_price_material": purchase.get("unit_price_material") or "",
@@ -379,6 +380,10 @@ def save_row(row_num, country, part_no=None):
     if group and current_user.role != "admin" and group["owner_user_id"] != int(current_user.id):
         conn.close()
         return jsonify({"error": "그룹 담당자만 상위 품목의 재료비를 입력할 수 있습니다."}), 403
+    if current_user.role == "admin" and part.get("manual_row"):
+        design_updates = {name: request.form.get(name) for name, _ in DESIGN_FIELDS if name in request.form}
+        if design_updates:
+            part_no = db.update_manual_part_fields(conn, active_version["id"], part_no, row_num, design_updates)
     editable_fields = ("currency", "unit_price_material", "unit_price_logistics", "tariff_rate", "mold_cost", "sourcing_part", "sourcing_assembly", "sourcing_part_location", "sourcing_assembly_location", "special_fx_rate", "special_fx_reason", "note")
     target_countries = request.form.getlist("target_country")
     if not target_countries:
