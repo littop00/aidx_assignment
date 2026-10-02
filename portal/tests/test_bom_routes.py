@@ -221,6 +221,24 @@ def test_bom_index_shows_category_counts(client, admin_user, app):
     assert "2" in html[hvac_idx:hvac_idx + 200]
 
 
+def test_bom_index_groups_categories_by_major(client, admin_user, app):
+    _login(client, admin_user)
+    conn = db.get_connection(app.config["DB_PATH"])
+    db.upsert_part(conn, "P001", 11, 0, "●", {"part_name": "FILTER", "category": "HVAC", "qty": "1"})
+    db.upsert_part(conn, "P002", 12, 0, "●", {"part_name": "COIL", "category": "EVAP", "qty": "1"})
+    db.upsert_part(conn, "P003", 13, 0, "●", {"part_name": "SENSOR", "category": "ECOMP", "qty": "1"})
+    conn.close()
+
+    resp = client.get("/bom/")
+    html = resp.get_data(as_text=True)
+    assert 'data-major="HVAC"' in html
+    assert 'data-major="E-COMP"' in html
+    hvac_idx = html.index('data-major="HVAC"')
+    tail = html[hvac_idx:hvac_idx + 900]
+    assert 'value="HVAC"' in tail
+    assert 'value="EVAP"' in tail
+
+
 def test_summary_groups_by_category_with_grand_total(client, admin_user, app):
     _login(client, admin_user)
     conn = db.get_connection(app.config["DB_PATH"])
