@@ -318,7 +318,34 @@ def summary():
 @bom_bp.route("/summary-page")
 @login_required
 def summary_page():
-    return render_template("summary.html")
+    conn = db.get_connection(current_app.config["DB_PATH"])
+    active_version = db.get_active_bom_version(conn)
+    display_version = db.get_display_bom_version(conn)
+    display_bom_id = display_version["id"] if display_version else None
+    vehicles = db.list_vehicles(conn, display_bom_id)
+    selected_vehicle = request.args.get("vehicle", "NE2_NV1")
+    if selected_vehicle not in vehicles:
+        selected_vehicle = vehicles[0] if vehicles else ""
+    report = db.dashboard_report(conn, display_bom_id, selected_vehicle)
+    for major in report["majors"]:
+        dom_total = {"material": 0.0, "logistics": 0.0, "tariff": 0.0, "total": 0.0}
+        over_total = {c: {"material_lp": 0.0, "material_kd": 0.0, "material_total": 0.0, "logistics": 0.0, "tariff": 0.0, "total": 0.0} for c in report["overseas_countries"]}
+        for cat in major["categories"]:
+            for key in dom_total:
+                dom_total[key] += cat["domestic"][key]
+            for country in report["overseas_countries"]:
+                for key in over_total[country]:
+                    over_total[country][key] += cat["overseas"][country][key]
+        major["domestic_total"] = dom_total
+        major["overseas_total"] = over_total
+    conn.close()
+    return render_template(
+        "dashboard_new.html",
+        report=report,
+        vehicles=vehicles,
+        selected_vehicle=selected_vehicle,
+        active_version=active_version,
+    )
 
 @bom_bp.route("/row/<part_no>/<int:row_num>/<country>", methods=["POST"])
 @bom_bp.route("/row/by-number/<int:row_num>/<country>", methods=["POST"])

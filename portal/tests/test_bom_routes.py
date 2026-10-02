@@ -26,11 +26,23 @@ def test_summary_page_requires_login(client):
     assert "/login" in resp.headers["Location"]
 
 
-def test_summary_page_embeds_summary_fragment(client, admin_user):
+def test_summary_page_shows_empty_report_when_no_parts(client, admin_user):
     _login(client, admin_user)
     resp = client.get("/bom/summary-page")
     assert resp.status_code == 200
-    assert b'hx-get="/bom/summary"' in resp.data
+    assert "데이터가 없습니다".encode() in resp.data
+
+
+def test_summary_page_shows_vehicle_cost_report(client, admin_user, app):
+    _login(client, admin_user)
+    conn = db.get_connection(app.config["DB_PATH"])
+    db.upsert_part(conn, "P001", 11, 0, "●", {"vehicle": "NE2_NV1", "part_name": "FILTER", "qty": "1"})
+    db.upsert_purchase(conn, "P001", 11, "한국", {"material_cost": "100", "total_cost": "115"})
+    conn.close()
+
+    resp = client.get("/bom/summary-page")
+    assert resp.status_code == 200
+    assert b"NE2_NV1" in resp.data
 
 
 def test_user_submits_only_selected_assignment(client, app):

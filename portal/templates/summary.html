@@ -1,6 +1,0 @@
-{% extends "base_new.html" %}
-{% block title %}재료비 Summary - TMS Portal{% endblock %}
-{% block page_title %}재료비 Summary{% endblock %}
-{% block content %}
-<div id="summary-container" hx-get="{{ url_for('bom.summary') }}" hx-trigger="load"></div>
-{% endblock %}

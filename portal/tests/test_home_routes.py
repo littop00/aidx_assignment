@@ -6,11 +6,11 @@ def _login(client, admin_user):
     client.post("/login", data=admin_user)
 
 
-def test_home_shows_empty_kpi_when_no_parts(client, admin_user):
+def test_home_shows_placeholder(client, admin_user):
     _login(client, admin_user)
     resp = client.get("/")
     assert resp.status_code == 200
-    assert "0".encode() in resp.data
+    assert "준비중".encode() in resp.data
 
 
 def test_legacy_upload_redirects_admin_to_version_management(client, admin_user):
@@ -26,17 +26,6 @@ def test_legacy_upload_redirects_admin_to_version_management(client, admin_user)
     )
     assert resp.status_code == 302
     assert resp.headers["Location"].endswith("/admin/boms")
-
-
-def test_home_shows_vehicle_country_summary(client, admin_user, app):
-    _login(client, admin_user)
-    conn = db.get_connection(app.config["DB_PATH"])
-    db.upsert_part(conn, "P001", 11, 0, "●", {"vehicle": "NE2_NV1", "part_name": "FILTER", "qty": "1"})
-    db.upsert_purchase(conn, "P001", 11, "한국", {"material_cost": "100", "total_cost": "115"})
-    conn.close()
-
-    resp = client.get("/")
-    assert b"NE2_NV1" in resp.data
 
 
 def test_vendor_dashboard_requires_login(client):
