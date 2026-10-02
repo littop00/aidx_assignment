@@ -223,6 +223,7 @@ def grid():
     search = request.args.get("search", "")
     categories = request.args.getlist("category")
     assigned_only = request.args.get("assigned") == "1"
+    group_only = request.args.get("group_only") == "1"
     scope = request.args.get("scope")
     version_id = request.args.get("version_id", type=int)
     page = int(request.args.get("page", 1))
@@ -247,7 +248,7 @@ def grid():
         selected_countries = configured_countries
     display_countries = ["한국"] + selected_countries
     input_user_id = None if current_user.role == "admin" else int(current_user.id)
-    all_rows = _filtered_rows(conn, display_countries, status, search, categories, input_user_id, assigned_only, bom_id=target_version["id"] if target_version else None)
+    all_rows = _filtered_rows(conn, display_countries, status, search, categories, input_user_id, assigned_only, bom_id=target_version["id"] if target_version else None, group_only=group_only)
     overseas_countries = db.list_overseas_countries(conn)
     conn.close()
 
@@ -280,6 +281,7 @@ def grid():
         show_group_button=False if viewing_history else (current_user.role == "admin" or scope == "my_bom"),
         show_confirm_button=False if viewing_history else (current_user.role == "admin"),
         assigned_only=assigned_only,
+        group_only=group_only,
         viewing_history=viewing_history,
         version_id=target_version["id"] if target_version else None,
     )
@@ -595,14 +597,21 @@ def set_group(part_no, row_num):
 @login_required
 def set_selected_group():
     row_nums = sorted({int(value) for value in request.form.getlist("row_num")})
-    if len(row_nums) < 2:
-        return jsonify({"ok": False, "message": "그룹으로 지정할 행을 두 개 이상 선택하세요."}), 422
     conn = db.get_connection(current_app.config["DB_PATH"])
     active = db.get_active_bom_version(conn)
     parts = [db.get_part_by_row_num(conn, row_num, active["id"]) for row_num in row_nums] if active else []
     if not active or any(part is None for part in parts):
         conn.close()
         return jsonify({"ok": False, "message": "선택한 BOM 행을 찾을 수 없습니다."}), 404
+    if len(row_nums) == 1:
+        part = parts[0]
+        existing = db.group_for_part(conn, active["id"], part["part_no"], part["row_num"])
+        if not existing:
+            conn.close()
+            return jsonify({"ok": False, "message": "그룹으로 지정할 행을 두 개 이상 선택하세요."}), 422
+        db.set_part_group(conn, active["id"], part["part_no"], part["row_num"], int(current_user.id), False)
+        conn.close()
+        return jsonify({"ok": True, "removed": True})
     parent = min(parts, key=lambda p: ((p.get("level_depth") or 0), p["row_num"]))
     existing = db.group_for_part(conn, active["id"], parent["part_no"], parent["row_num"])
     if existing and existing["parent_part_no"] == parent["part_no"] and existing["parent_row_num"] == parent["row_num"]:

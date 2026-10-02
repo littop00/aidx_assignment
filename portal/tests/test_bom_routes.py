@@ -285,6 +285,58 @@ def test_grid_exposes_domestic_currency_and_special_fx_fields(client, admin_user
     assert 'name="한국__special_fx_reason"' in html
 
 
+def test_bom_index_has_group_only_filter_checkbox(client, admin_user, app):
+    _login(client, admin_user)
+    resp = client.get("/bom/")
+    html = resp.get_data(as_text=True)
+    assert 'name="group_only"' in html
+
+
+def test_selected_group_disbands_with_single_row_selected(client, admin_user, app):
+    _login(client, admin_user)
+    conn = db.get_connection(app.config["DB_PATH"])
+    db.upsert_part(conn, "P001", 11, 0, "●", {"part_name": "PARENT", "qty": "1"})
+    db.upsert_part(conn, "P002", 12, 1, "●", {"part_name": "CHILD", "qty": "1"})
+    active = db.get_active_bom_version(conn)
+    db.set_part_group(conn, active["id"], "P001", 11, 1, True, member_keys=[("P001", 11), ("P002", 12)])
+    conn.close()
+
+    resp = client.post("/bom/groups/selected", data={"row_num": ["12"]})
+    assert resp.status_code == 200
+    assert resp.get_json() == {"ok": True, "removed": True}
+
+    conn = db.get_connection(app.config["DB_PATH"])
+    assert db.group_for_part(conn, active["id"], "P001", 11) is None
+    conn.close()
+
+
+def test_selected_group_single_ungrouped_row_returns_error(client, admin_user, app):
+    _login(client, admin_user)
+    conn = db.get_connection(app.config["DB_PATH"])
+    db.upsert_part(conn, "P001", 11, 0, "●", {"part_name": "LONE", "qty": "1"})
+    conn.close()
+
+    resp = client.post("/bom/groups/selected", data={"row_num": ["11"]})
+    assert resp.status_code == 422
+
+
+def test_grid_group_only_filters_to_grouped_rows(client, admin_user, app):
+    _login(client, admin_user)
+    conn = db.get_connection(app.config["DB_PATH"])
+    db.upsert_part(conn, "P001", 11, 0, "●", {"part_name": "PARENT", "qty": "1"})
+    db.upsert_part(conn, "P002", 12, 1, "●", {"part_name": "CHILD", "qty": "1"})
+    db.upsert_part(conn, "P003", 13, 0, "●", {"part_name": "LONE", "qty": "1"})
+    active = db.get_active_bom_version(conn)
+    db.set_part_group(conn, active["id"], "P001", 11, int(admin_user["id"]) if "id" in admin_user else 1, True, member_keys=[("P001", 11), ("P002", 12)])
+    conn.close()
+
+    resp = client.get("/bom/grid?country=한국&group_only=1")
+    html = resp.get_data(as_text=True)
+    assert "P001" in html
+    assert "P002" in html
+    assert "P003" not in html
+
+
 def test_summary_groups_by_category_with_grand_total(client, admin_user, app):
     _login(client, admin_user)
     conn = db.get_connection(app.config["DB_PATH"])
