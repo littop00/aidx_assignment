@@ -241,22 +241,32 @@ def test_bom_index_shows_category_counts(client, admin_user, app):
     assert "2" in html[hvac_idx:hvac_idx + 200]
 
 
-def test_bom_index_groups_categories_by_major(client, admin_user, app):
+def test_bom_index_has_separate_major_and_sub_category_dropdowns(client, admin_user, app):
     _login(client, admin_user)
     conn = db.get_connection(app.config["DB_PATH"])
-    db.upsert_part(conn, "P001", 11, 0, "●", {"part_name": "FILTER", "category": "HVAC", "qty": "1"})
-    db.upsert_part(conn, "P002", 12, 0, "●", {"part_name": "COIL", "category": "EVAP", "qty": "1"})
-    db.upsert_part(conn, "P003", 13, 0, "●", {"part_name": "SENSOR", "category": "ECOMP", "qty": "1"})
+    db.upsert_part(conn, "P001", 11, 0, "●", {"part_name": "FILTER", "category": "HVAC", "sub_category": "DUCT", "qty": "1"})
+    db.upsert_part(conn, "P002", 12, 0, "●", {"part_name": "COIL", "category": "EVAP", "sub_category": "CORE", "qty": "1"})
     conn.close()
 
     resp = client.get("/bom/")
     html = resp.get_data(as_text=True)
-    assert 'data-major="HVAC"' in html
-    assert 'data-major="E-COMP"' in html
-    hvac_idx = html.index('data-major="HVAC"')
-    tail = html[hvac_idx:hvac_idx + 900]
-    assert 'value="HVAC"' in tail
-    assert 'value="EVAP"' in tail
+    assert 'name="category" value="HVAC"' in html
+    assert 'name="category" value="EVAP"' in html
+    assert 'name="sub_category" value="DUCT"' in html
+    assert 'name="sub_category" value="CORE"' in html
+
+
+def test_grid_filters_by_sub_category(client, admin_user, app):
+    _login(client, admin_user)
+    conn = db.get_connection(app.config["DB_PATH"])
+    db.upsert_part(conn, "P001", 11, 0, "●", {"part_name": "FILTER", "category": "HVAC", "sub_category": "DUCT", "qty": "1"})
+    db.upsert_part(conn, "P002", 12, 0, "●", {"part_name": "COIL", "category": "EVAP", "sub_category": "CORE", "qty": "1"})
+    conn.close()
+
+    resp = client.get("/bom/grid?country=한국&sub_category=DUCT")
+    html = resp.get_data(as_text=True)
+    assert "FILTER" in html
+    assert "COIL" not in html
 
 
 def test_grid_row_cells_are_keyboard_navigable(client, admin_user, app):
@@ -353,6 +363,23 @@ def test_selected_group_single_ungrouped_row_returns_error(client, admin_user, a
 
     resp = client.post("/bom/groups/selected", data={"row_num": ["11"]})
     assert resp.status_code == 422
+
+
+def test_grid_group_child_badge_shows_parent_identity(client, admin_user, app):
+    _login(client, admin_user)
+    conn = db.get_connection(app.config["DB_PATH"])
+    db.upsert_part(conn, "P001", 11, 0, "●", {"part_name": "PARENT", "qty": "1"})
+    db.upsert_part(conn, "P002", 12, 1, "●", {"part_name": "CHILD", "qty": "1"})
+    active = db.get_active_bom_version(conn)
+    db.set_part_group(conn, active["id"], "P001", 11, 1, True, member_keys=[("P001", 11), ("P002", 12)])
+    conn.close()
+
+    resp = client.get("/bom/grid?country=한국")
+    html = resp.get_data(as_text=True)
+    child_idx = html.index('row-P002-12')
+    tail = html[child_idx:child_idx + 1500]
+    assert "PARENT" in tail
+    assert "P001" in tail
 
 
 def test_grid_group_only_filters_to_grouped_rows(client, admin_user, app):
