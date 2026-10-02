@@ -780,9 +780,6 @@ def add_manual_part(conn, bom_id, anchor_part_no, anchor_row_num, position, fiel
     anchor = get_part(conn, anchor_part_no, anchor_row_num, bom_id)
     if not anchor:
         raise ValueError("기준 BOM 행을 찾을 수 없습니다.")
-    part_name = (fields.get("part_name") or "").strip()
-    if not part_name:
-        raise ValueError("추가 행의 품명은 필수입니다.")
     insert_at = anchor_row_num + (1 if position == "after" else 0)
     # Avoid composite-key collisions while moving rows down.
     conn.execute("PRAGMA foreign_keys = OFF")
@@ -801,6 +798,25 @@ def add_manual_part(conn, bom_id, anchor_part_no, anchor_row_num, position, fiel
     conn.execute("PRAGMA foreign_keys = ON")
     conn.commit()
     return get_part(conn, part_no, insert_at, bom_id)
+
+def update_manual_part_fields(conn, bom_id, part_no, row_num, fields):
+    """Persist in-grid edits to a manually added row's design fields. Returns the (possibly new) part_no."""
+    design_names = [n for n, _ in DESIGN_FIELDS]
+    present = {n: v for n, v in fields.items() if n in design_names}
+    if not present:
+        return part_no
+    new_part_no = (present.get("part_no") or "").strip() or part_no
+    present["part_no"] = new_part_no
+    set_clause = ", ".join(f"{c}=?" for c in present)
+    conn.execute(
+        f"UPDATE bom_parts SET {set_clause} WHERE bom_id=? AND part_no=? AND row_num=? AND manual_row=1",
+        list(present.values()) + [bom_id, part_no, row_num],
+    )
+    if new_part_no != part_no:
+        for table in ("bom_purchase_data", "bom_user_purchase_data", "bom_part_assignments"):
+            conn.execute(f"UPDATE {table} SET part_no=? WHERE bom_id=? AND part_no=? AND row_num=?", (new_part_no, bom_id, part_no, row_num))
+    conn.commit()
+    return new_part_no
 
 def list_assigned_parts(conn, bom_id, user_id):
     """2차 상세지정된(explicit) 품목만 반환 - 제출 필수 항목/제출 스냅샷 기준."""

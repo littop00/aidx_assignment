@@ -318,16 +318,57 @@ def test_add_row_accepts_all_design_fields(client, admin_user, app):
     assert part["remark"] == "수동 추가"
 
 
-def test_bom_index_has_add_row_form_with_design_fields(client, admin_user, app):
+def test_grid_has_quick_add_row_button_for_admin(client, admin_user, app):
     _login(client, admin_user)
-    resp = client.get("/bom/")
+    conn = db.get_connection(app.config["DB_PATH"])
+    db.upsert_part(conn, "P001", 11, 0, "●", {"part_name": "ANCHOR", "qty": "1"})
+    conn.close()
+
+    resp = client.get("/bom/grid?country=한국")
     html = resp.get_data(as_text=True)
-    assert 'id="add-bom-row-form"' in html
-    assert 'name="anchor_row_num"' in html
-    assert 'name="part_name"' in html
-    assert 'name="part_no"' in html
-    assert 'name="material"' in html
-    assert 'name="remark"' in html
+    assert 'id="quick-add-row-btn"' in html
+
+
+def test_add_row_with_no_fields_creates_blank_manual_row(client, admin_user, app):
+    _login(client, admin_user)
+    conn = db.get_connection(app.config["DB_PATH"])
+    db.upsert_part(conn, "P001", 11, 0, "●", {"part_name": "ANCHOR", "qty": "1"})
+    conn.close()
+
+    resp = client.post("/bom/rows", data={"anchor_row_num": "11", "position": "after"})
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+    row_num = resp.get_json()["row_num"]
+
+    conn = db.get_connection(app.config["DB_PATH"])
+    part = db.get_part_by_row_num(conn, row_num)
+    conn.close()
+    assert part["manual_row"] == 1
+    assert (part["part_name"] or "") == ""
+
+
+def test_save_row_updates_manual_row_design_fields(client, admin_user, app):
+    _login(client, admin_user)
+    conn = db.get_connection(app.config["DB_PATH"])
+    db.upsert_part(conn, "P001", 11, 0, "●", {"part_name": "ANCHOR", "qty": "1"})
+    active = db.get_active_bom_version(conn)
+    part = db.add_manual_part(conn, active["id"], "P001", 11, "after", {})
+    conn.close()
+
+    resp = client.post(
+        f"/bom/row/by-number/{part['row_num']}/한국",
+        data={"part_name": "새 품목", "part_no": "NEW-1", "vehicle": "NE2", "category": "HVAC", "qty": "5"},
+        headers={"Accept": "application/json"},
+    )
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+
+    conn = db.get_connection(app.config["DB_PATH"])
+    saved = db.get_part_by_row_num(conn, part["row_num"])
+    conn.close()
+    assert saved["part_name"] == "새 품목"
+    assert saved["part_no"] == "NEW-1"
+    assert saved["vehicle"] == "NE2"
+    assert saved["category"] == "HVAC"
+    assert saved["qty"] == "5"
 
 
 def test_bom_index_has_group_only_filter_checkbox(client, admin_user, app):
