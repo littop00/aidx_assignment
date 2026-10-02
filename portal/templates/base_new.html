@@ -424,6 +424,23 @@
         await Promise.all(rows.map(async (row) => { await saveRow(row); delete row.dataset.dirty; }));
         showSaveMessage(`${rows.length}개 행을 임시 저장했습니다.`);
     };
+
+    const NAV_KEYS = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter"];
+    document.addEventListener("keydown", (event) => {
+        if (!NAV_KEYS.includes(event.key)) return;
+        const cell = event.target.closest(".nav-cell");
+        if (!cell) return;
+        const row = cell.closest("tr");
+        let target = null;
+        if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+            const cells = [...row.querySelectorAll(".nav-cell")];
+            target = cells[cells.indexOf(cell) + (event.key === "ArrowLeft" ? -1 : 1)];
+        } else {
+            const sibling = event.key === "ArrowUp" ? row.previousElementSibling : row.nextElementSibling;
+            target = sibling?.querySelector(`[name="${cell.name}"].nav-cell`);
+        }
+        if (target) { event.preventDefault(); target.focus(); target.select?.(); }
+    });
 })();
 </script>
 </body>
