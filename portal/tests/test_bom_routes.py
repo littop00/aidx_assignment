@@ -285,6 +285,41 @@ def test_grid_exposes_domestic_currency_and_special_fx_fields(client, admin_user
     assert 'name="한국__special_fx_reason"' in html
 
 
+def test_add_row_accepts_all_design_fields(client, admin_user, app):
+    _login(client, admin_user)
+    conn = db.get_connection(app.config["DB_PATH"])
+    db.upsert_part(conn, "P001", 11, 0, "●", {"part_name": "ANCHOR", "qty": "1"})
+    conn.close()
+
+    resp = client.post("/bom/rows", data={
+        "anchor_row_num": "11", "position": "after",
+        "part_name": "NEW PART", "part_no": "P999", "qty": "3",
+        "material": "SPCC", "width": "10", "depth_len": "20", "height": "30",
+        "remark": "수동 추가",
+    })
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+    row_num = resp.get_json()["row_num"]
+
+    conn = db.get_connection(app.config["DB_PATH"])
+    part = db.get_part(conn, "P999", row_num)
+    conn.close()
+    assert part["material"] == "SPCC"
+    assert part["width"] == "10"
+    assert part["remark"] == "수동 추가"
+
+
+def test_bom_index_has_add_row_form_with_design_fields(client, admin_user, app):
+    _login(client, admin_user)
+    resp = client.get("/bom/")
+    html = resp.get_data(as_text=True)
+    assert 'id="add-bom-row-form"' in html
+    assert 'name="anchor_row_num"' in html
+    assert 'name="part_name"' in html
+    assert 'name="part_no"' in html
+    assert 'name="material"' in html
+    assert 'name="remark"' in html
+
+
 def test_bom_index_has_group_only_filter_checkbox(client, admin_user, app):
     _login(client, admin_user)
     resp = client.get("/bom/")
