@@ -257,21 +257,15 @@ def grid():
     start = (page - 1) * page_size
     page_rows = all_rows[start:start + page_size]
 
-    window_size = 5
-    window_start = max(1, page - window_size // 2)
-    window_end = min(total_pages, window_start + window_size - 1)
-    window_start = max(1, window_end - window_size + 1)
-
     material_sum = sum(sum(r["country_data"][c]["material_cost"] for c in display_countries) for r in all_rows)
     logistics_sum = sum(sum(r["country_data"][c]["logistics_cost"] for c in selected_countries) for r in all_rows)
     total_sum = sum(sum(r["country_data"][c]["total_cost"] for c in display_countries) for r in all_rows)
 
     return render_template(
-        "partials/_grid.html",
+        "partials/_grid_rows.html" if page > 1 else "partials/_grid.html",
         rows=page_rows, country=country, status=status, search=search,
         page=page, total_pages=total_pages, total=total,
-        page_size=page_size, page_size_options=PAGE_SIZE_OPTIONS,
-        window_start=window_start, window_end=window_end,
+        page_size=page_size,
         material_sum=material_sum, logistics_sum=logistics_sum, total_sum=total_sum,
         # Reuse this list for both case-column management and sourcing choices.
         countries=overseas_countries,

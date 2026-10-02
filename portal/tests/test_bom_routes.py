@@ -95,6 +95,26 @@ def test_grid_paginates_results(client, admin_user, app):
     assert resp2.data.count(b"<tr id=") == 5
 
 
+def test_grid_first_page_has_scroll_sentinel_and_no_pagination_nav(client, admin_user, app):
+    _login(client, admin_user)
+    _seed_parts(app, n=25)
+    resp = client.get("/bom/grid?country=한국&page=1")
+    assert resp.status_code == 200
+    assert b"scroll-sentinel" in resp.data
+    assert b"grid-pagination" not in resp.data
+    assert resp.data.count(b"<tr id=") == 20
+
+
+def test_grid_next_page_returns_rows_fragment_without_table_shell(client, admin_user, app):
+    _login(client, admin_user)
+    _seed_parts(app, n=25)
+    resp = client.get("/bom/grid?country=한국&page=2")
+    assert resp.status_code == 200
+    assert b"<table" not in resp.data
+    assert resp.data.count(b"<tr id=") == 5
+    assert b"scroll-sentinel" not in resp.data  # last page, no more to load
+
+
 def test_grid_respects_page_size_param(client, admin_user, app):
     _login(client, admin_user)
     _seed_parts(app, n=25)
