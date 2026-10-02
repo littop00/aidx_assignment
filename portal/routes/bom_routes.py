@@ -155,6 +155,7 @@ def index():
         can_edit=(not viewing_history) and current_user.role != "admin" and (submission and submission["status"] in ("draft", "returned")),
         progress=progress,
         viewing_history=viewing_history, view_version=view_version,
+        design_field_labels=DESIGN_FIELD_LABELS,
     )
 
 @bom_bp.route("/history")
@@ -298,12 +299,10 @@ def add_row():
         conn.close()
         return jsonify({"ok": False, "message": "기준 행을 찾을 수 없습니다."}), 404
     try:
-        part = db.add_manual_part(conn, active["id"], anchor["part_no"], anchor["row_num"], request.form.get("position", "after"), {
-            "part_name": (request.form.get("part_name") or "").strip(),
-            "part_no": (request.form.get("part_no") or "").strip(),
-            "qty": request.form.get("qty"),
-            "spec": request.form.get("spec"),
-        })
+        fields = {name: request.form.get(name) for name, _ in DESIGN_FIELDS if name != "part_no"}
+        fields["part_name"] = (fields.get("part_name") or "").strip()
+        fields["part_no"] = (request.form.get("part_no") or "").strip()
+        part = db.add_manual_part(conn, active["id"], anchor["part_no"], anchor["row_num"], request.form.get("position", "after"), fields)
         result = {"ok": True, "row_num": part["row_num"]}
     except ValueError as exc:
         result = {"ok": False, "message": str(exc)}
