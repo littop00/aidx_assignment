@@ -59,6 +59,15 @@ def test_recalculate_purchase_row_ignores_special_fx_for_domestic(tmp_path):
     })
     assert result["material_cost"] == 2000.0
 
+def test_recalculate_purchase_row_applies_special_fx_for_domestic_non_krw(tmp_path):
+    conn = db.get_connection(str(tmp_path / "test.db"))
+    db.init_db(conn)
+    db.upsert_part(conn, "P001", 12, 1, "●", {"part_name": "FILTER", "qty": "2"})
+    result = calc.recalculate_purchase_row(conn, "P001", 12, "한국", {
+        "currency": "USD", "unit_price_material": "10", "special_fx_rate": "1000",
+    })
+    assert result["material_cost"] == 20000.0
+
 def test_recalculate_purchase_row_reports_field_errors_for_non_numeric_input(tmp_path):
     conn = db.get_connection(str(tmp_path / "test.db"))
     db.init_db(conn)
