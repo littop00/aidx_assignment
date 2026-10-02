@@ -110,7 +110,7 @@ def compute_total_cost(material_cost, logistics_cost, tariff_cost):
 def recalculate_purchase_row(conn, part_no, row_num, country, fields):
     part = db.get_part(conn, part_no, row_num)
     qty = part["qty"] if part else None
-    special_fx_rate = fields.get("special_fx_rate") if country != "한국" else None
+    special_fx_rate = fields.get("special_fx_rate") if fields.get("currency") != "KRW" else None
     fields = dict(fields)
     if country != "한국":
         export = compute_export_logistics(conn, part, country)
