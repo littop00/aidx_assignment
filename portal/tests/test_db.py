@@ -168,3 +168,58 @@ def test_search_suggestions_returns_distinct_parts(tmp_path):
     assert part_nos == {"P001", "P002"}
     categories = {r["category"] for r in result}
     assert categories == {"HVAC", "TTMM"}
+
+def test_create_bid_bom_from_source_snapshots_korea_cost_only(tmp_path):
+    conn = db.get_connection(str(tmp_path / "test.db")); db.init_db(conn)
+    bom_id = db.get_active_bom_version(conn)["id"]
+    db.upsert_part(conn, "P001", 11, 0, "●", {"part_name": "FILTER", "qty": "2"}, bom_id)
+    db.upsert_purchase(conn, "P001", 11, "한국", {"total_cost": "115"}, bom_id=bom_id)
+    db.upsert_purchase(conn, "P001", 11, "미국", {"total_cost": "999"}, bom_id=bom_id)
+    db.publish_bom_version(conn, bom_id)
+    bid = db.create_bid_bom_from_source(conn, bom_id, "입찰 v1", "NE2_NV1", "admin")
+    assert bid["status"] == "draft"
+    assert bid["source_bom_version_id"] == bom_id
+    parts = db.list_bid_parts(conn, bid["id"])
+    assert len(parts) == 1
+    assert parts[0]["part_name"] == "FILTER"
+    assert parts[0]["ref_material_cost"] == 115.0
+
+def test_create_bid_bom_part_with_no_korea_cost_has_null_ref(tmp_path):
+    conn = db.get_connection(str(tmp_path / "test.db")); db.init_db(conn)
+    bom_id = db.get_active_bom_version(conn)["id"]
+    db.upsert_part(conn, "P002", 12, 0, "●", {"part_name": "BRACKET", "qty": "1"}, bom_id)
+    db.publish_bom_version(conn, bom_id)
+    bid = db.create_bid_bom_from_source(conn, bom_id, "입찰 v1", "NE2_NV1", "admin")
+    assert db.list_bid_parts(conn, bid["id"])[0]["ref_material_cost"] is None
+
+def test_bid_bom_version_lifecycle(tmp_path):
+    conn = db.get_connection(str(tmp_path / "test.db")); db.init_db(conn)
+    bom_id = db.get_active_bom_version(conn)["id"]
+    db.publish_bom_version(conn, bom_id)
+    bid_id = db.create_bid_bom_from_source(conn, bom_id, "입찰 v1", "NE2_NV1", "admin")["id"]
+    assert db.get_active_bid_bom_version(conn) is None
+    db.publish_bid_bom_version(conn, bid_id)
+    active = db.get_active_bid_bom_version(conn)
+    assert active["id"] == bid_id
+    assert db.withdraw_bid_bom_version(conn, bid_id, "오류", "admin") is True
+    assert db.get_active_bid_bom_version(conn) is None
+    assert db.get_bid_bom_version(conn, bid_id)["is_withdrawn"] == 1
+
+def test_delete_bid_bom_draft_removes_version_and_parts(tmp_path):
+    conn = db.get_connection(str(tmp_path / "test.db")); db.init_db(conn)
+    bom_id = db.get_active_bom_version(conn)["id"]
+    db.upsert_part(conn, "P001", 11, 0, "●", {"part_name": "FILTER"}, bom_id)
+    db.publish_bom_version(conn, bom_id)
+    bid_id = db.create_bid_bom_from_source(conn, bom_id, "입찰 v1", "NE2_NV1", "admin")["id"]
+    db.delete_bid_bom_draft(conn, bid_id)
+    assert db.get_bid_bom_version(conn, bid_id) is None
+    assert db.list_bid_parts(conn, bid_id) == []
+
+def test_list_bid_bom_versions_orders_by_version_desc(tmp_path):
+    conn = db.get_connection(str(tmp_path / "test.db")); db.init_db(conn)
+    bom_id = db.get_active_bom_version(conn)["id"]
+    db.publish_bom_version(conn, bom_id)
+    db.create_bid_bom_from_source(conn, bom_id, "입찰 v1", "NE2_NV1", "admin")
+    db.create_bid_bom_from_source(conn, bom_id, "입찰 v2", "NE2_NV1", "admin")
+    versions = db.list_bid_bom_versions(conn)
+    assert [v["name"] for v in versions] == ["입찰 v2", "입찰 v1"]

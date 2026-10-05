@@ -353,6 +353,74 @@ def init_db(conn):
             FOREIGN KEY (bom_id) REFERENCES bom_versions(id)
         )
     """)
+    conn.execute(f"""
+        CREATE TABLE IF NOT EXISTS bid_bom_versions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_bom_version_id INTEGER NOT NULL,
+            version_no INTEGER NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            vehicle TEXT,
+            status TEXT NOT NULL CHECK(status IN ('draft','published','archived')),
+            created_by TEXT,
+            created_at TEXT NOT NULL,
+            published_at TEXT,
+            is_withdrawn INTEGER NOT NULL DEFAULT 0,
+            withdrawn_at TEXT,
+            withdrawal_reason TEXT,
+            FOREIGN KEY (source_bom_version_id) REFERENCES bom_versions(id)
+        )
+    """)
+    conn.execute(f"""
+        CREATE TABLE IF NOT EXISTS bid_bom_parts (
+            bid_id INTEGER NOT NULL,
+            part_no TEXT NOT NULL,
+            row_num INTEGER NOT NULL,
+            level_depth INTEGER,
+            level_marker TEXT,
+            {design_cols},
+            ref_material_cost REAL,
+            PRIMARY KEY (bid_id, part_no, row_num),
+            FOREIGN KEY (bid_id) REFERENCES bid_bom_versions(id)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS bid_purchase_data (
+            bid_id INTEGER NOT NULL, part_no TEXT NOT NULL, row_num INTEGER NOT NULL,
+            material TEXT, size TEXT, surface TEXT, weight_unit REAL, weight_total REAL,
+            dev_type TEXT, remark TEXT,
+            unit_price REAL, material_cost REAL, total_cost REAL,
+            spec_add REAL, spec_delete REAL, spec_change REAL,
+            material_change REAL, tariff_change REAL, fx_change REAL,
+            cost_reduction REAL, cost_increase REAL, localization REAL,
+            bridge_total REAL, bridge_note TEXT,
+            updated_at TEXT, updated_by TEXT,
+            PRIMARY KEY (bid_id, part_no, row_num),
+            FOREIGN KEY (bid_id, part_no, row_num) REFERENCES bid_bom_parts(bid_id, part_no, row_num)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS bid_info (
+            bid_id INTEGER NOT NULL, part_no TEXT NOT NULL, row_num INTEGER NOT NULL,
+            bid_plan TEXT,
+            design_cost REAL,
+            selected_vendor TEXT,
+            decided_price REAL,
+            committed_reduction REAL,
+            volume_10k REAL,
+            annual_purchase REAL,
+            review_comment TEXT,
+            updated_at TEXT, updated_by TEXT,
+            PRIMARY KEY (bid_id, part_no, row_num),
+            FOREIGN KEY (bid_id, part_no, row_num) REFERENCES bid_bom_parts(bid_id, part_no, row_num)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS bid_category_members (
+            bid_id INTEGER NOT NULL, category TEXT NOT NULL, user_id INTEGER NOT NULL,
+            joined_at TEXT NOT NULL,
+            PRIMARY KEY (bid_id, category, user_id)
+        )
+    """)
     registered_countries = [
         "유럽", "미국", "캐나다", "멕시코", "브라질", "아르헨티나", "칠레", "콜롬비아", "페루",
         "영국", "독일", "프랑스", "이탈리아", "스페인", "포르투갈", "네덜란드", "벨기에", "스위스", "오스트리아",
@@ -525,6 +593,68 @@ def withdraw_bom_version(conn, bom_id, reason, withdrawn_by):
     """
     conn.commit()
     return True
+
+def create_bid_bom_from_source(conn, source_bom_id, name, vehicle, created_by):
+    next_version = conn.execute("SELECT COALESCE(MAX(version_no), 0) + 1 AS next_version FROM bid_bom_versions").fetchone()["next_version"]
+    now = datetime.datetime.now().isoformat(timespec="seconds")
+    cursor = conn.execute(
+        "INSERT INTO bid_bom_versions (source_bom_version_id, version_no, name, vehicle, status, created_by, created_at) VALUES (?, ?, ?, ?, 'draft', ?, ?)",
+        (source_bom_id, next_version, name, vehicle, created_by, now),
+    )
+    bid_id = cursor.lastrowid
+    design_names = [n for n, _ in DESIGN_FIELDS if n != "part_no"]
+    parts = conn.execute(
+        "SELECT part_no, row_num, level_depth, level_marker, " + ", ".join(design_names) + " FROM bom_parts WHERE bom_id = ?",
+        (source_bom_id,),
+    ).fetchall()
+    columns = ["bid_id", "part_no", "row_num", "level_depth", "level_marker"] + design_names + ["ref_material_cost"]
+    placeholders = ", ".join(["?"] * len(columns))
+    for part in parts:
+        korea = conn.execute(
+            "SELECT total_cost FROM bom_purchase_data WHERE bom_id=? AND part_no=? AND row_num=? AND country='한국'",
+            (source_bom_id, part["part_no"], part["row_num"]),
+        ).fetchone()
+        ref_material_cost = korea["total_cost"] if korea else None
+        values = [bid_id, part["part_no"], part["row_num"], part["level_depth"], part["level_marker"]] + [part[n] for n in design_names] + [ref_material_cost]
+        conn.execute(f"INSERT INTO bid_bom_parts ({', '.join(columns)}) VALUES ({placeholders})", values)
+    conn.commit()
+    return get_bid_bom_version(conn, bid_id)
+
+def get_bid_bom_version(conn, bid_id):
+    row = conn.execute("SELECT * FROM bid_bom_versions WHERE id = ?", (bid_id,)).fetchone()
+    return dict(row) if row else None
+
+def list_bid_bom_versions(conn):
+    return [dict(row) for row in conn.execute("SELECT * FROM bid_bom_versions ORDER BY version_no DESC").fetchall()]
+
+def get_active_bid_bom_version(conn):
+    row = conn.execute("SELECT * FROM bid_bom_versions WHERE status = 'published' AND COALESCE(is_withdrawn, 0) = 0 ORDER BY version_no DESC LIMIT 1").fetchone()
+    return dict(row) if row else None
+
+def list_bid_parts(conn, bid_id):
+    return [dict(row) for row in conn.execute("SELECT * FROM bid_bom_parts WHERE bid_id = ? ORDER BY row_num", (bid_id,)).fetchall()]
+
+def publish_bid_bom_version(conn, bid_id):
+    now = datetime.datetime.now().isoformat(timespec="seconds")
+    conn.execute("UPDATE bid_bom_versions SET status = 'archived' WHERE status = 'published'")
+    conn.execute("UPDATE bid_bom_versions SET status = 'published', published_at = ?, is_withdrawn = 0, withdrawn_at = NULL, withdrawal_reason = NULL WHERE id = ? AND status = 'draft'", (now, bid_id))
+    conn.commit()
+
+def withdraw_bid_bom_version(conn, bid_id, reason, withdrawn_by):
+    now = datetime.datetime.now().isoformat(timespec="seconds")
+    version = get_bid_bom_version(conn, bid_id)
+    if not version or version["status"] != "published":
+        return False
+    conn.execute("UPDATE bid_bom_versions SET is_withdrawn=1, withdrawn_at=?, withdrawal_reason=? WHERE id=?", (now, reason, bid_id))
+    conn.commit()
+    return True
+
+def delete_bid_bom_draft(conn, bid_id):
+    conn.execute("DELETE FROM bid_purchase_data WHERE bid_id = ?", (bid_id,))
+    conn.execute("DELETE FROM bid_info WHERE bid_id = ?", (bid_id,))
+    conn.execute("DELETE FROM bid_bom_parts WHERE bid_id = ?", (bid_id,))
+    conn.execute("DELETE FROM bid_bom_versions WHERE id = ?", (bid_id,))
+    conn.commit()
 
 def list_notifications(conn, user_id, limit=8):
     rows = conn.execute("SELECT * FROM notifications WHERE user_id=? ORDER BY is_read, id DESC LIMIT ?", (user_id, limit)).fetchall()
