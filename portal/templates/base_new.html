@@ -51,23 +51,10 @@
         </li>
 
         <li class="menu-title text-[#A3AED0] font-bold text-xs tracking-wider mt-4 mb-2 px-2">수주 BOM</li>
-        <li x-data="{ open: {{ 'true' if request.endpoint in ('bom.index', 'bom.grid', 'bom.history') else 'false' }} }">
-          <a href="#" @click.prevent="open = !open" class="flex items-center justify-between gap-3 px-4 py-3 rounded-xl font-medium cursor-pointer {% if request.endpoint in ('bom.index', 'bom.grid', 'bom.history') %}text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
-            <span class="flex items-center gap-3"><i class="bi bi-table text-lg"></i> BOM 조회</span>
-            <i class="bi text-xs" :class="open ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
+        <li>
+          <a href="{{ url_for('bom.index') }}" class="flex items-center gap-3 px-4 py-3 rounded-xl font-medium {% if request.endpoint in ('bom.index', 'bom.grid') and not request.args.get('version_id') %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
+            <i class="bi bi-table text-lg"></i> BOM 조회
           </a>
-          <ul x-show="open" x-cloak class="pl-8 mt-1 flex flex-col gap-1">
-            <li>
-              <a href="{{ url_for('bom.index') }}" class="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium {% if request.endpoint in ('bom.index', 'bom.grid') and not request.args.get('version_id') %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
-                현재 BOM
-              </a>
-            </li>
-            <li>
-              <a href="{{ url_for('bom.history') }}" class="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium {% if request.endpoint == 'bom.history' or (request.endpoint in ('bom.index', 'bom.grid') and request.args.get('version_id')) %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
-                BOM 이력
-              </a>
-            </li>
-          </ul>
         </li>
 
         {% if current_user.role != 'admin' %}
@@ -99,6 +86,12 @@
         <li>
           <a href="{{ url_for('bid_bom.index') }}" class="flex items-center gap-3 px-4 py-3 rounded-xl font-medium {% if request.endpoint and request.endpoint.startswith('bid_bom.') %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
             <i class="bi bi-clipboard2-data text-lg"></i> 입찰 BOM
+          </a>
+        </li>
+
+        <li>
+          <a href="{{ url_for('bom.history') }}" class="flex items-center gap-3 px-4 py-3 rounded-xl font-medium {% if request.endpoint == 'bom.history' or (request.endpoint in ('bom.index', 'bom.grid') and request.args.get('version_id')) %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
+            <i class="bi bi-clock-history text-lg"></i> BOM 이력
           </a>
         </li>
 

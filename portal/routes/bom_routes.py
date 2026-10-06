@@ -152,22 +152,11 @@ def index():
         design_field_labels=DESIGN_FIELD_LABELS,
     )
 
-@bom_bp.route("/history")
-@login_required
-def history():
-    conn = db.get_connection(current_app.config["DB_PATH"])
+def _purchase_history_rows(conn, status, search, date_from, date_to, show_unconfirmed):
     active = db.get_active_bom_version(conn)
     versions = [v for v in db.list_bom_versions(conn) if v["status"] in ("published", "archived")]
-    conn.close()
     for v in versions:
         v["is_active"] = bool(active) and v["id"] == active["id"]
-
-    status = request.args.get("status", "")
-    search = (request.args.get("search") or "").strip().lower()
-    date_from = request.args.get("date_from", "")
-    date_to = request.args.get("date_to", "")
-    show_unconfirmed = request.args.get("show_unconfirmed") == "1"
-
     if not show_unconfirmed:
         versions = [v for v in versions if v["is_active"] or v["is_confirmed"]]
     if status == "active":
@@ -180,9 +169,61 @@ def history():
         versions = [v for v in versions if v["confirmed_at"] and v["confirmed_at"] >= date_from]
     if date_to:
         versions = [v for v in versions if v["confirmed_at"] and v["confirmed_at"] <= date_to + "T23:59:59"]
+    return [{
+        "name": v["name"], "vehicle": v["vehicle"], "version_no": v["version_no"],
+        "published_at": v["published_at"], "date": v["confirmed_at"],
+        "status_value": "active" if v["is_active"] else ("confirmed" if v["is_confirmed"] else "unconfirmed"),
+        "status_label": "사용중" if v["is_active"] else ("확정됨" if v["is_confirmed"] else "미확정(보관)"),
+        "view_url": url_for("bom.index", version_id=v["id"]),
+    } for v in versions]
+
+def _bid_history_rows(conn, status, search, date_from, date_to):
+    active = db.get_active_bid_bom_version(conn)
+    versions = [v for v in db.list_bid_bom_versions(conn) if v["status"] in ("published", "archived")]
+    rows = []
+    for v in versions:
+        is_active = bool(active) and v["id"] == active["id"]
+        if v["is_withdrawn"]:
+            status_value, status_label = "withdrawn", "배포취소"
+        elif is_active:
+            status_value, status_label = "active", "사용중"
+        else:
+            status_value, status_label = "archived", "보관"
+        rows.append({
+            "name": v["name"], "vehicle": v["vehicle"], "version_no": v["version_no"],
+            "published_at": v["published_at"], "date": v["published_at"],
+            "status_value": status_value, "status_label": status_label,
+            "view_url": url_for("bid_bom.index") if is_active else None,
+        })
+    if status:
+        rows = [r for r in rows if r["status_value"] == status]
+    if search:
+        rows = [r for r in rows if search in (r["name"] or "").lower() or search in (r["vehicle"] or "").lower()]
+    if date_from:
+        rows = [r for r in rows if r["date"] and r["date"] >= date_from]
+    if date_to:
+        rows = [r for r in rows if r["date"] and r["date"] <= date_to + "T23:59:59"]
+    return rows
+
+@bom_bp.route("/history")
+@login_required
+def history():
+    bom_type = request.args.get("type", "purchase")
+    status = request.args.get("status", "")
+    search = (request.args.get("search") or "").strip().lower()
+    date_from = request.args.get("date_from", "")
+    date_to = request.args.get("date_to", "")
+    show_unconfirmed = request.args.get("show_unconfirmed") == "1"
+
+    conn = db.get_connection(current_app.config["DB_PATH"])
+    if bom_type == "bid":
+        rows = _bid_history_rows(conn, status, search, date_from, date_to)
+    else:
+        rows = _purchase_history_rows(conn, status, search, date_from, date_to, show_unconfirmed)
+    conn.close()
 
     return render_template(
-        "bom_history.html", versions=versions, active=active,
+        "bom_history.html", bom_type=bom_type, rows=rows,
         status=status, search=request.args.get("search", ""), date_from=date_from, date_to=date_to,
         show_unconfirmed=show_unconfirmed,
     )

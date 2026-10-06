@@ -500,3 +500,71 @@ def test_summary_groups_by_category_with_grand_total(client, admin_user, app):
     assert b"HVAC" in resp.data
     assert b"TTMM" in resp.data
     assert "345".encode() in resp.data
+
+
+def test_history_requires_login(client):
+    resp = client.get("/bom/history")
+    assert resp.status_code == 302
+    assert "/login" in resp.headers["Location"]
+
+
+def test_history_defaults_to_purchase_type_and_lists_confirmed_version(client, admin_user, app):
+    _login(client, admin_user)
+    conn = db.get_connection(app.config["DB_PATH"])
+    bom_id = db.get_active_bom_version(conn)["id"]
+    db.upsert_part(conn, "P001", 11, 0, "●", {"part_name": "FILTER"}, bom_id)
+    db.publish_bom_version(conn, bom_id)
+    db.confirm_bom_version(conn, bom_id)
+    conn.close()
+
+    resp = client.get("/bom/history")
+    assert resp.status_code == 200
+    assert "사용중".encode() in resp.data
+    assert b"/bom/?version_id=" + str(bom_id).encode() in resp.data
+
+
+def test_history_bid_type_shows_active_archived_and_withdrawn(client, admin_user, app):
+    _login(client, admin_user)
+    conn = db.get_connection(app.config["DB_PATH"])
+    bom_id = db.get_active_bom_version(conn)["id"]
+    db.upsert_part(conn, "P001", 11, 0, "●", {"part_name": "FILTER"}, bom_id)
+    db.publish_bom_version(conn, bom_id)
+    db.confirm_bom_version(conn, bom_id)
+
+    archived_id = db.create_bid_bom_from_source(conn, bom_id, "입찰 v1", "NE2_NV1", "admin")["id"]
+    db.publish_bid_bom_version(conn, archived_id)
+
+    withdrawn_id = db.create_bid_bom_from_source(conn, bom_id, "입찰 v2", "NE2_NV1", "admin")["id"]
+    db.publish_bid_bom_version(conn, withdrawn_id)
+    db.withdraw_bid_bom_version(conn, withdrawn_id, "오류", "admin")
+
+    active_id = db.create_bid_bom_from_source(conn, bom_id, "입찰 v3", "NE2_NV1", "admin")["id"]
+    db.publish_bid_bom_version(conn, active_id)
+    conn.close()
+
+    resp = client.get("/bom/history?type=bid")
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "사용중" in html
+    assert "보관" in html
+    assert "배포취소" in html
+    assert "/bid-bom/" in html
+
+
+def test_history_bid_type_view_url_only_for_active_version(client, admin_user, app):
+    _login(client, admin_user)
+    conn = db.get_connection(app.config["DB_PATH"])
+    bom_id = db.get_active_bom_version(conn)["id"]
+    db.upsert_part(conn, "P001", 11, 0, "●", {"part_name": "FILTER"}, bom_id)
+    db.publish_bom_version(conn, bom_id)
+    db.confirm_bom_version(conn, bom_id)
+
+    archived_id = db.create_bid_bom_from_source(conn, bom_id, "입찰 v1", "NE2_NV1", "admin")["id"]
+    db.publish_bid_bom_version(conn, archived_id)
+    active_id = db.create_bid_bom_from_source(conn, bom_id, "입찰 v2", "NE2_NV1", "admin")["id"]
+    db.publish_bid_bom_version(conn, active_id)
+    conn.close()
+
+    resp = client.get("/bom/history?type=bid")
+    html = resp.get_data(as_text=True)
+    assert html.count('href="/bid-bom/" class="btn btn-ghost btn-sm rounded-xl"') == 1
