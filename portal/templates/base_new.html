@@ -114,6 +114,11 @@
             <i class="bi bi-clipboard-check text-lg"></i> 제출 검토
           </a>
         </li>
+        <li>
+          <a href="{{ url_for('admin.bid_bom_versions') }}" class="flex items-center gap-3 px-4 py-3 rounded-xl font-medium {% if request.endpoint == 'admin.bid_bom_versions' %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
+            <i class="bi bi-clipboard2-data text-lg"></i> 입찰 BOM 관리자
+          </a>
+        </li>
         {% endif %}
       </ul>
     </nav>

@@ -121,6 +121,70 @@ def delete_draft(bom_id):
     flash(f"{version['name']} 초안을 삭제했습니다.")
     return redirect(url_for("admin.bom_versions"))
 
+@admin_bp.route("/bid-boms")
+@admin_required
+def bid_bom_versions():
+    conn = db.get_connection(current_app.config["DB_PATH"])
+    versions = db.list_bid_bom_versions(conn)
+    confirmed_sources = [v for v in db.list_bom_versions(conn) if v["is_confirmed"]]
+    conn.close()
+    return render_template("admin_bid_boms.html", versions=versions, confirmed_sources=confirmed_sources)
+
+@admin_bp.route("/bid-boms/create", methods=["POST"])
+@admin_required
+def create_bid_bom():
+    name = (request.form.get("name") or "새 입찰 BOM").strip()
+    vehicle = (request.form.get("vehicle") or "").strip()
+    source_bom_id = request.form.get("source_bom_id", type=int)
+    conn = db.get_connection(current_app.config["DB_PATH"])
+    source = db.get_bom_version(conn, source_bom_id) if source_bom_id else None
+    if not source or not source["is_confirmed"]:
+        conn.close()
+        flash("승계할 확정된 수주 BOM을 선택해 주세요.")
+        return redirect(url_for("admin.bid_bom_versions"))
+    draft = db.create_bid_bom_from_source(conn, source_bom_id, name, vehicle, current_user.username)
+    conn.close()
+    flash(f"{draft['name']} 입찰 BOM 초안을 만들었습니다.")
+    return redirect(url_for("admin.bid_bom_versions"))
+
+@admin_bp.route("/bid-boms/<int:bid_id>/publish", methods=["POST"])
+@admin_required
+def publish_bid_bom(bid_id):
+    conn = db.get_connection(current_app.config["DB_PATH"])
+    version = db.get_bid_bom_version(conn, bid_id)
+    if not version or version["status"] != "draft":
+        conn.close()
+        abort(400)
+    db.publish_bid_bom_version(conn, bid_id)
+    conn.close()
+    flash(f"{version['name']}을 확정했습니다.")
+    return redirect(url_for("admin.bid_bom_versions"))
+
+@admin_bp.route("/bid-boms/<int:bid_id>/withdraw", methods=["POST"])
+@admin_required
+def withdraw_bid_bom(bid_id):
+    reason = (request.form.get("reason") or "").strip()
+    conn = db.get_connection(current_app.config["DB_PATH"])
+    if not db.withdraw_bid_bom_version(conn, bid_id, reason, current_user.username):
+        conn.close()
+        abort(400)
+    conn.close()
+    flash("배포를 취소했습니다.")
+    return redirect(url_for("admin.bid_bom_versions"))
+
+@admin_bp.route("/bid-boms/<int:bid_id>/delete", methods=["POST"])
+@admin_required
+def delete_bid_bom(bid_id):
+    conn = db.get_connection(current_app.config["DB_PATH"])
+    version = db.get_bid_bom_version(conn, bid_id)
+    if not version or version["status"] != "draft":
+        conn.close()
+        abort(400)
+    db.delete_bid_bom_draft(conn, bid_id)
+    conn.close()
+    flash(f"{version['name']} 초안을 삭제했습니다.")
+    return redirect(url_for("admin.bid_bom_versions"))
+
 @admin_bp.route("/boms/<int:bom_id>/countries", methods=["POST"])
 @admin_required
 def set_countries(bom_id):

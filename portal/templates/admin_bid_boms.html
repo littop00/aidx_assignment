@@ -1,0 +1,73 @@
+{% extends "base_new.html" %}
+{% block title %}입찰 BOM 관리자 - TMS Portal{% endblock %}
+{% block page_title %}입찰 BOM 관리자{% endblock %}
+{% block content %}
+<div x-data='{draftOpen: false}'>
+<div class="bg-white rounded-2xl p-6 shadow-sm border-none mb-6 admin-intro"><strong class="text-[#1B2559]">관리자 작업 흐름</strong><span class="text-[#A3AED0] ml-2">1. 확정된 수주 BOM 선택 · 승계 생성 · 2. 확정 · 배포 · 3. 배포 취소(필요 시)</span></div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+
+  <div class="lg:col-span-1 flex flex-col gap-6">
+    <div class="bg-white rounded-2xl p-6 shadow-sm border-none">
+      <h3 class="text-lg font-bold text-[#1B2559] mb-4 flex items-center gap-2"><i class="bi bi-clipboard2-data"></i> 입찰 BOM 버전</h3>
+      <table class="table table-sm table-zebra bom-table w-full text-[#1B2559] text-sm"><thead><tr class="bg-transparent border-b border-base-content/10"><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-left">버전</th><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-left">이름</th><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-left">차종</th><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-center">상태</th></tr></thead><tbody>
+      {% for version in versions %}
+      <tr><td class="text-left text-sm font-medium">Rev.{{ version.version_no }}</td><td class="text-left text-sm font-medium">{{ version.name }}</td><td class="text-left text-sm font-medium">{{ version.vehicle or '-' }}</td><td class="text-center align-middle"><div class="flex items-center justify-center gap-1 flex-wrap">{% if version.is_withdrawn %}<span class="badge badge-sm rounded-md font-bold border-none bg-rose-50 text-rose-600">배포 취소</span>{% else %}<span class="badge badge-sm rounded-md font-bold border-none {% if version.status == 'published' %}bg-emerald-50 text-emerald-600{% elif version.status == 'draft' %}bg-amber-50 text-amber-600{% else %}bg-gray-100 text-gray-500{% endif %}">{{ {'draft':'초안','published':'배포 중','archived':'보관'}[version.status] }}</span>{% if version.status == 'published' %}<button type="button" class="btn btn-ghost btn-xs btn-circle" title="배포 관리" onclick="document.getElementById('bid-withdraw-dialog-{{ version.id }}').showModal()"><i class="bi bi-gear"></i></button>{% endif %}{% endif %}</div></td></tr>
+      {% else %}
+      <tr><td colspan="4" class="text-center text-sm text-[#A3AED0] py-6">생성된 입찰 BOM이 없습니다.</td></tr>
+      {% endfor %}
+      </tbody></table>
+    </div>
+  </div>
+
+  <div class="lg:col-span-2 flex flex-col gap-6 bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-base-200">
+    <div class="flex items-center justify-between">
+      <h3 class="text-lg font-bold text-[#1B2559] flex items-center gap-2"><i class="bi bi-file-earmark-text"></i> 입찰 BOM 승계 생성</h3>
+      <button type="button" class="btn btn-primary btn-sm rounded-xl font-bold" @click="draftOpen = !draftOpen" x-text="draftOpen ? '취소' : '+ 새 입찰 BOM 생성'"></button>
+    </div>
+    <form x-show="draftOpen" x-transition x-cloak method="post" action="{{ url_for('admin.create_bid_bom') }}" class="grid grid-cols-1 md:grid-cols-4 gap-3 items-center pb-6 border-b border-[#F4F7FE]">
+      <input name="name" class="input input-bordered w-full rounded-xl bg-base-100 border-base-300 focus:border-primary focus:outline-none transition-all text-sm py-2 px-4" placeholder="예: NE2_NV1 입찰 BOM v1" required>
+      <input name="vehicle" class="input input-bordered w-full rounded-xl bg-base-100 border-base-300 focus:border-primary focus:outline-none transition-all text-sm py-2 px-4" placeholder="차종">
+      <select name="source_bom_id" class="select select-bordered w-full rounded-xl bg-base-100 border-base-300 focus:border-primary focus:outline-none transition-all text-sm py-2 px-4" required>
+        <option value="">승계할 확정 수주 BOM 선택</option>
+        {% for source in confirmed_sources %}<option value="{{ source.id }}">Rev.{{ source.version_no }} · {{ source.name }}</option>{% endfor %}
+      </select>
+      <button class="btn btn-primary btn-md rounded-xl font-bold w-full" type="submit">생성</button>
+    </form>
+    {% if not confirmed_sources %}<p class="text-xs text-[#A3AED0]">승계 가능한 확정된 수주 BOM이 없습니다.</p>{% endif %}
+
+    {% for version in versions if version.status == 'draft' %}
+    <div class="flex flex-wrap items-baseline gap-x-8 gap-y-2 pb-6 border-b border-[#F4F7FE]">
+      <div><span class="text-xs text-[#A3AED0] font-medium block mb-1">버전</span><span class="text-lg font-bold text-[#1B2559]">Rev.{{ version.version_no }}</span></div>
+      <div><span class="text-xs text-[#A3AED0] font-medium block mb-1">이름</span><span class="text-lg font-bold text-[#1B2559]">{{ version.name }}</span></div>
+      <div><span class="text-xs text-[#A3AED0] font-medium block mb-1">상태</span><span class="badge badge-sm rounded-md font-bold border-none bg-amber-50 text-amber-600">초안</span></div>
+      <div class="flex gap-2 ml-auto">
+        <form method="post" action="{{ url_for('admin.delete_bid_bom', bid_id=version.id) }}" onsubmit="return confirm('이 입찰 BOM 초안을 삭제하시겠습니까?')">
+          <button class="btn btn-ghost btn-sm rounded-xl text-rose-500">삭제</button>
+        </form>
+        <form method="post" action="{{ url_for('admin.publish_bid_bom', bid_id=version.id) }}" onsubmit="return confirm('이 입찰 BOM을 확정하여 배포하시겠습니까?')">
+          <button class="btn btn-primary btn-sm rounded-xl font-bold">확정 · 배포</button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+</div>
+</div>
+
+{% for version in versions if version.status == 'published' %}
+<dialog id="bid-withdraw-dialog-{{ version.id }}" class="modal">
+  <div class="modal-box rounded-2xl">
+    <h3 class="font-bold text-lg text-[#1B2559]">{{ version.name }} 배포 관리</h3>
+    <form method="post" action="{{ url_for('admin.withdraw_bid_bom', bid_id=version.id) }}" onsubmit="return confirm('이 입찰 BOM의 배포를 취소하시겠습니까?')" class="mt-4 flex flex-col gap-3">
+      <textarea name="reason" class="textarea textarea-bordered rounded-xl" placeholder="취소 사유"></textarea>
+      <div class="flex justify-end gap-2">
+        <button type="button" class="btn btn-ghost btn-sm rounded-xl" onclick="document.getElementById('bid-withdraw-dialog-{{ version.id }}').close()">닫기</button>
+        <button class="btn btn-error btn-sm rounded-xl text-white">배포 취소</button>
+      </div>
+    </form>
+  </div>
+</dialog>
+{% endfor %}
+{% endblock %}
