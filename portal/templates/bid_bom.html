@@ -2,6 +2,10 @@
 {% block title %}입찰 BOM - TMS Portal{% endblock %}
 {% block page_title %}입찰 BOM{% endblock %}
 {% block content %}
+<div role="tablist" class="tabs tabs-boxed mb-4 w-fit">
+  <a role="tab" class="tab tab-active">BOM 조회</a>
+  <a role="tab" class="tab" href="{{ url_for('bid_bom.input_form') }}">입찰정보 입력</a>
+</div>
 <div class="bg-white rounded-2xl p-4 shadow-sm mb-4 flex items-center justify-between">
   <div class="text-sm text-[#A3AED0]">{{ active.name }} · 총 {{ rows|length }}건</div>
   <button type="submit" form="bid-bom-form" class="btn btn-primary btn-sm rounded-xl font-bold">저장</button>

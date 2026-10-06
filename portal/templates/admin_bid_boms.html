@@ -54,6 +54,26 @@
   </div>
 
 </div>
+
+{% if active and bid_categories %}
+<div class="bg-white rounded-2xl p-6 shadow-sm border-none mt-6">
+  <h3 class="text-lg font-bold text-[#1B2559] mb-4 flex items-center gap-2"><i class="bi bi-person-check"></i> {{ active.name }} 담당자 지정</h3>
+  <table class="table table-sm table-zebra bom-table w-full text-[#1B2559] text-sm">
+    <thead><tr class="bg-transparent border-b border-base-content/10"><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-left">사용자</th><th class="bg-transparent text-base-content/50 uppercase text-xs font-bold tracking-wider text-left">담당 분류</th><th></th></tr></thead>
+    <tbody>
+    {% for user in users %}
+    <tr>
+      <form method="post" action="{{ url_for('admin.set_bid_user_categories', bid_id=active.id, user_id=user.id) }}" class="contents">
+      <td class="text-left align-middle font-medium">{{ user.username }}</td>
+      <td class="text-left align-middle"><div class="flex flex-wrap gap-3">{% for category in bid_categories %}<label class="flex items-center gap-1 text-xs"><input type="checkbox" class="checkbox checkbox-xs checkbox-primary" name="categories" value="{{ category }}" {% if category in user_bid_categories.get(user.id, []) %}checked{% endif %}> {{ category }}</label>{% endfor %}</div></td>
+      <td class="text-right align-middle"><button class="btn btn-ghost btn-xs rounded-lg">저장</button></td>
+      </form>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
 </div>
 
 {% for version in versions if version.status == 'published' %}

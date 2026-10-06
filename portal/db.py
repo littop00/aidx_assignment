@@ -652,6 +652,7 @@ def withdraw_bid_bom_version(conn, bid_id, reason, withdrawn_by):
 def delete_bid_bom_draft(conn, bid_id):
     conn.execute("DELETE FROM bid_purchase_data WHERE bid_id = ?", (bid_id,))
     conn.execute("DELETE FROM bid_info WHERE bid_id = ?", (bid_id,))
+    conn.execute("DELETE FROM bid_category_members WHERE bid_id = ?", (bid_id,))
     conn.execute("DELETE FROM bid_bom_parts WHERE bid_id = ?", (bid_id,))
     conn.execute("DELETE FROM bid_bom_versions WHERE id = ?", (bid_id,))
     conn.commit()
@@ -699,6 +700,35 @@ def upsert_bid_info(conn, bid_id, part_no, row_num, fields, updated_by=None):
 def get_bid_info(conn, bid_id, part_no, row_num):
     row = conn.execute("SELECT * FROM bid_info WHERE bid_id=? AND part_no=? AND row_num=?", (bid_id, part_no, row_num)).fetchone()
     return dict(row) if row else None
+
+def list_bid_categories(conn, bid_id):
+    rows = conn.execute("SELECT DISTINCT category FROM bid_bom_parts WHERE bid_id=? AND category IS NOT NULL AND category != '' ORDER BY category", (bid_id,)).fetchall()
+    return [row["category"] for row in rows]
+
+def list_bid_category_members(conn, bid_id):
+    rows = conn.execute("""
+        SELECT m.category, u.id AS user_id, u.username FROM bid_category_members m
+        JOIN users u ON u.id = m.user_id
+        WHERE m.bid_id=? ORDER BY m.category, u.username
+    """, (bid_id,)).fetchall()
+    members = {}
+    for row in rows:
+        members.setdefault(row["category"], []).append({"id": row["user_id"], "username": row["username"]})
+    return members
+
+def get_user_bid_categories(conn, bid_id, user_id):
+    rows = conn.execute("SELECT category FROM bid_category_members WHERE bid_id=? AND user_id=?", (bid_id, user_id)).fetchall()
+    return {row["category"] for row in rows}
+
+def set_bid_category_membership(conn, bid_id, user_id, category, member):
+    if member:
+        conn.execute(
+            "INSERT OR IGNORE INTO bid_category_members (bid_id, category, user_id, joined_at) VALUES (?, ?, ?, ?)",
+            (bid_id, category, user_id, datetime.datetime.now().isoformat(timespec="seconds")),
+        )
+    else:
+        conn.execute("DELETE FROM bid_category_members WHERE bid_id=? AND category=? AND user_id=?", (bid_id, category, user_id))
+    conn.commit()
 
 def list_notifications(conn, user_id, limit=8):
     rows = conn.execute("SELECT * FROM notifications WHERE user_id=? ORDER BY is_read, id DESC LIMIT ?", (user_id, limit)).fetchall()

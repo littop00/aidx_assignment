@@ -127,8 +127,33 @@ def bid_bom_versions():
     conn = db.get_connection(current_app.config["DB_PATH"])
     versions = db.list_bid_bom_versions(conn)
     confirmed_sources = [v for v in db.list_bom_versions(conn) if v["is_confirmed"]]
+    active = db.get_active_bid_bom_version(conn)
+    users = db.list_users(conn)
+    bid_categories = db.list_bid_categories(conn, active["id"]) if active else []
+    bid_category_members = db.list_bid_category_members(conn, active["id"]) if active else {}
+    user_bid_categories = {}
+    for user in users:
+        if active:
+            cats = db.get_user_bid_categories(conn, active["id"], user["id"])
+            if cats:
+                user_bid_categories[user["id"]] = sorted(cats)
     conn.close()
-    return render_template("admin_bid_boms.html", versions=versions, confirmed_sources=confirmed_sources)
+    return render_template(
+        "admin_bid_boms.html", versions=versions, confirmed_sources=confirmed_sources,
+        active=active, users=users, bid_categories=bid_categories,
+        bid_category_members=bid_category_members, user_bid_categories=user_bid_categories,
+    )
+
+@admin_bp.route("/bid-boms/<int:bid_id>/users/<int:user_id>/categories", methods=["POST"])
+@admin_required
+def set_bid_user_categories(bid_id, user_id):
+    conn = db.get_connection(current_app.config["DB_PATH"])
+    selected = set(request.form.getlist("categories"))
+    for category in db.list_bid_categories(conn, bid_id):
+        db.set_bid_category_membership(conn, bid_id, user_id, category, category in selected)
+    conn.close()
+    flash("담당자를 저장했습니다.")
+    return redirect(url_for("admin.bid_bom_versions"))
 
 @admin_bp.route("/bid-boms/create", methods=["POST"])
 @admin_required

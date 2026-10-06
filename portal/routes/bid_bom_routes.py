@@ -66,3 +66,51 @@ def save():
     conn.close()
     flash("입찰 재료비 변동내역을 저장했습니다.")
     return redirect(url_for("bid_bom.index"))
+
+
+def _assigned_parts(conn, active, user):
+    parts = db.list_bid_parts(conn, active["id"])
+    if user.role == "admin":
+        return parts
+    allowed = db.get_user_bid_categories(conn, active["id"], user.id)
+    return [p for p in parts if p.get("category") in allowed]
+
+
+@bid_bom_bp.route("/input")
+@login_required
+def input_form():
+    conn = db.get_connection(current_app.config["DB_PATH"])
+    active = db.get_active_bid_bom_version(conn)
+    if not active:
+        conn.close()
+        return render_template("bid_bom_placeholder.html")
+    rows = []
+    for part in _assigned_parts(conn, active, current_user):
+        info = db.get_bid_info(conn, active["id"], part["part_no"], part["row_num"]) or {}
+        rows.append({"part": part, "info": info})
+    conn.close()
+    return render_template("bid_bom_input.html", active=active, rows=rows)
+
+
+@bid_bom_bp.route("/input/save", methods=["POST"])
+@login_required
+def input_save():
+    conn = db.get_connection(current_app.config["DB_PATH"])
+    active = db.get_active_bid_bom_version(conn)
+    if not active:
+        conn.close()
+        flash("배포된 입찰 BOM이 없습니다.")
+        return redirect(url_for("bid_bom.input_form"))
+    for part in _assigned_parts(conn, active, current_user):
+        part_no, row_num = part["part_no"], part["row_num"]
+        suffix = f"{part_no}__{row_num}"
+        if f"decided_price__{suffix}" not in request.form and f"bid_plan__{suffix}" not in request.form:
+            continue
+        fields = {}
+        for name in db.BID_INFO_FIELD_NAMES:
+            raw = request.form.get(f"{name}__{suffix}", "")
+            fields[name] = raw.strip() if name in ("bid_plan", "selected_vendor", "review_comment") else _parse_float(raw)
+        db.upsert_bid_info(conn, active["id"], part_no, row_num, fields, updated_by=current_user.username)
+    conn.close()
+    flash("입찰정보를 저장했습니다.")
+    return redirect(url_for("bid_bom.input_form"))
