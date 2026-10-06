@@ -223,3 +223,39 @@ def test_list_bid_bom_versions_orders_by_version_desc(tmp_path):
     db.create_bid_bom_from_source(conn, bom_id, "입찰 v2", "NE2_NV1", "admin")
     versions = db.list_bid_bom_versions(conn)
     assert [v["name"] for v in versions] == ["입찰 v2", "입찰 v1"]
+
+def _seed_bid_bom(conn):
+    bom_id = db.get_active_bom_version(conn)["id"]
+    db.upsert_part(conn, "P001", 11, 0, "●", {"part_name": "FILTER"}, bom_id)
+    db.publish_bom_version(conn, bom_id)
+    return db.create_bid_bom_from_source(conn, bom_id, "입찰 v1", "NE2_NV1", "admin")["id"]
+
+def test_upsert_and_get_bid_purchase(tmp_path):
+    conn = db.get_connection(str(tmp_path / "test.db")); db.init_db(conn)
+    bid_id = _seed_bid_bom(conn)
+    db.upsert_bid_purchase(conn, bid_id, "P001", 11, {"unit_price": "50", "total_cost": "100"}, updated_by="worker")
+    purchase = db.get_bid_purchase(conn, bid_id, "P001", 11)
+    assert purchase["unit_price"] == 50.0
+    assert purchase["total_cost"] == 100.0
+    assert purchase["updated_by"] == "worker"
+
+def test_upsert_bid_purchase_updates_not_duplicates(tmp_path):
+    conn = db.get_connection(str(tmp_path / "test.db")); db.init_db(conn)
+    bid_id = _seed_bid_bom(conn)
+    db.upsert_bid_purchase(conn, bid_id, "P001", 11, {"total_cost": "100"})
+    db.upsert_bid_purchase(conn, bid_id, "P001", 11, {"total_cost": "200"})
+    assert db.get_bid_purchase(conn, bid_id, "P001", 11)["total_cost"] == 200.0
+
+def test_upsert_and_get_bid_info(tmp_path):
+    conn = db.get_connection(str(tmp_path / "test.db")); db.init_db(conn)
+    bid_id = _seed_bid_bom(conn)
+    db.upsert_bid_info(conn, bid_id, "P001", 11, {"selected_vendor": "ACME", "decided_price": "90"}, updated_by="worker")
+    info = db.get_bid_info(conn, bid_id, "P001", 11)
+    assert info["selected_vendor"] == "ACME"
+    assert info["decided_price"] == 90.0
+    assert info["updated_by"] == "worker"
+
+def test_get_bid_info_missing_returns_none(tmp_path):
+    conn = db.get_connection(str(tmp_path / "test.db")); db.init_db(conn)
+    bid_id = _seed_bid_bom(conn)
+    assert db.get_bid_info(conn, bid_id, "NOPE", 1) is None

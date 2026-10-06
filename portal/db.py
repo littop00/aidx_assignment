@@ -656,6 +656,50 @@ def delete_bid_bom_draft(conn, bid_id):
     conn.execute("DELETE FROM bid_bom_versions WHERE id = ?", (bid_id,))
     conn.commit()
 
+BID_PURCHASE_FIELD_NAMES = [
+    "material", "size", "surface", "weight_unit", "weight_total", "dev_type", "remark",
+    "unit_price", "material_cost", "total_cost",
+    "spec_add", "spec_delete", "spec_change", "material_change", "tariff_change", "fx_change",
+    "cost_reduction", "cost_increase", "localization", "bridge_total", "bridge_note",
+]
+
+BID_INFO_FIELD_NAMES = [
+    "bid_plan", "design_cost", "selected_vendor", "decided_price",
+    "committed_reduction", "volume_10k", "annual_purchase", "review_comment",
+]
+
+def upsert_bid_purchase(conn, bid_id, part_no, row_num, fields, updated_by=None):
+    columns = ["bid_id", "part_no", "row_num"] + BID_PURCHASE_FIELD_NAMES + ["updated_at", "updated_by"]
+    values = [bid_id, part_no, row_num] + [fields.get(n) for n in BID_PURCHASE_FIELD_NAMES] + [datetime.datetime.now().isoformat(timespec="minutes"), updated_by]
+    placeholders = ", ".join(["?"] * len(columns))
+    updates = ", ".join(f"{c}=excluded.{c}" for c in columns if c not in ("bid_id", "part_no", "row_num"))
+    conn.execute(
+        f"INSERT INTO bid_purchase_data ({', '.join(columns)}) VALUES ({placeholders}) "
+        f"ON CONFLICT(bid_id, part_no, row_num) DO UPDATE SET {updates}",
+        values,
+    )
+    conn.commit()
+
+def get_bid_purchase(conn, bid_id, part_no, row_num):
+    row = conn.execute("SELECT * FROM bid_purchase_data WHERE bid_id=? AND part_no=? AND row_num=?", (bid_id, part_no, row_num)).fetchone()
+    return dict(row) if row else None
+
+def upsert_bid_info(conn, bid_id, part_no, row_num, fields, updated_by=None):
+    columns = ["bid_id", "part_no", "row_num"] + BID_INFO_FIELD_NAMES + ["updated_at", "updated_by"]
+    values = [bid_id, part_no, row_num] + [fields.get(n) for n in BID_INFO_FIELD_NAMES] + [datetime.datetime.now().isoformat(timespec="minutes"), updated_by]
+    placeholders = ", ".join(["?"] * len(columns))
+    updates = ", ".join(f"{c}=excluded.{c}" for c in columns if c not in ("bid_id", "part_no", "row_num"))
+    conn.execute(
+        f"INSERT INTO bid_info ({', '.join(columns)}) VALUES ({placeholders}) "
+        f"ON CONFLICT(bid_id, part_no, row_num) DO UPDATE SET {updates}",
+        values,
+    )
+    conn.commit()
+
+def get_bid_info(conn, bid_id, part_no, row_num):
+    row = conn.execute("SELECT * FROM bid_info WHERE bid_id=? AND part_no=? AND row_num=?", (bid_id, part_no, row_num)).fetchone()
+    return dict(row) if row else None
+
 def list_notifications(conn, user_id, limit=8):
     rows = conn.execute("SELECT * FROM notifications WHERE user_id=? ORDER BY is_read, id DESC LIMIT ?", (user_id, limit)).fetchall()
     return [dict(row) for row in rows]
