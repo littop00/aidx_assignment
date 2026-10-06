@@ -1,0 +1,85 @@
+{% extends "base_new.html" %}
+{% block title %}입찰 BOM - TMS Portal{% endblock %}
+{% block page_title %}입찰 BOM{% endblock %}
+{% block content %}
+<div class="bg-white rounded-2xl p-4 shadow-sm mb-4 flex items-center justify-between">
+  <div class="text-sm text-[#A3AED0]">{{ active.name }} · 총 {{ rows|length }}건</div>
+  <button type="submit" form="bid-bom-form" class="btn btn-primary btn-sm rounded-xl font-bold">저장</button>
+</div>
+<form id="bid-bom-form" method="post" action="{{ url_for('bid_bom.save') }}">
+<div class="table-responsive bg-white rounded-2xl shadow-sm border-none max-h-[calc(100vh-240px)] overflow-auto">
+<table class="table table-zebra bom-table align-middle text-[#1B2559] text-sm">
+<thead>
+<tr class="text-[#A3AED0] uppercase text-xs tracking-wider bg-gray-50">
+  <th class="text-center" colspan="10">수주 BOM 참조 (읽기전용)</th>
+  <th class="text-center" colspan="14">입찰 재료비 변동내역</th>
+  <th class="text-center">차액</th>
+</tr>
+<tr class="text-[#A3AED0] uppercase text-xs tracking-wider bg-gray-50">
+  <th class="text-center">레벨</th>
+  <th class="text-center">사양</th>
+  <th class="text-center">소분류</th>
+  <th class="text-center">품번</th>
+  <th class="text-center">품명</th>
+  <th class="text-center">수량</th>
+  <th class="text-center">재질</th>
+  <th class="text-center">표면처리</th>
+  <th class="text-center">중량</th>
+  <th class="text-center">수주재료비</th>
+  <th class="text-center">단가</th>
+  <th class="text-center">재료비</th>
+  <th class="text-center">총원가</th>
+  <th class="text-center">사양추가</th>
+  <th class="text-center">사양삭제</th>
+  <th class="text-center">사양변경</th>
+  <th class="text-center">소재변경</th>
+  <th class="text-center">관세변경</th>
+  <th class="text-center">환율변경</th>
+  <th class="text-center">원가절감</th>
+  <th class="text-center">원가상승</th>
+  <th class="text-center">현지화</th>
+  <th class="text-center">변동합계</th>
+  <th class="text-center">변동비고</th>
+  <th class="text-center">차액</th>
+</tr>
+</thead>
+<tbody>
+{% for row in rows %}
+{% set part = row.part %}
+{% set purchase = row.purchase %}
+{% set suffix = part.part_no ~ "__" ~ part.row_num %}
+<tr>
+  <td class="text-center">{{ part.level_marker or '' }}</td>
+  <td class="text-center">{{ part.spec or '' }}</td>
+  <td class="text-center">{{ part.sub_category or '' }}</td>
+  <td class="text-center">{{ part.part_no }}</td>
+  <td class="text-center">{{ part.part_name or '' }}</td>
+  <td class="text-center">{{ part.qty or '' }}</td>
+  <td class="text-center">{{ part.material or '' }}</td>
+  <td class="text-center">{{ part.surface or '' }}</td>
+  <td class="text-center">{{ part.weight_total or '' }}</td>
+  <td class="text-center">{{ part.ref_material_cost if part.ref_material_cost is not none else '' }}</td>
+  <td class="text-center"><input type="number" step="any" name="unit_price__{{ suffix }}" value="{{ purchase.unit_price if purchase.unit_price is not none else '' }}" class="input input-bordered input-xs rounded-lg w-24"></td>
+  <td class="text-center"><input type="number" step="any" name="material_cost__{{ suffix }}" value="{{ purchase.material_cost if purchase.material_cost is not none else '' }}" class="input input-bordered input-xs rounded-lg w-24"></td>
+  <td class="text-center"><input type="number" step="any" name="total_cost__{{ suffix }}" value="{{ purchase.total_cost if purchase.total_cost is not none else '' }}" class="input input-bordered input-xs rounded-lg w-24"></td>
+  <td class="text-center"><input type="number" step="any" name="spec_add__{{ suffix }}" value="{{ purchase.spec_add if purchase.spec_add is not none else '' }}" class="input input-bordered input-xs rounded-lg w-20"></td>
+  <td class="text-center"><input type="number" step="any" name="spec_delete__{{ suffix }}" value="{{ purchase.spec_delete if purchase.spec_delete is not none else '' }}" class="input input-bordered input-xs rounded-lg w-20"></td>
+  <td class="text-center"><input type="number" step="any" name="spec_change__{{ suffix }}" value="{{ purchase.spec_change if purchase.spec_change is not none else '' }}" class="input input-bordered input-xs rounded-lg w-20"></td>
+  <td class="text-center"><input type="number" step="any" name="material_change__{{ suffix }}" value="{{ purchase.material_change if purchase.material_change is not none else '' }}" class="input input-bordered input-xs rounded-lg w-20"></td>
+  <td class="text-center"><input type="number" step="any" name="tariff_change__{{ suffix }}" value="{{ purchase.tariff_change if purchase.tariff_change is not none else '' }}" class="input input-bordered input-xs rounded-lg w-20"></td>
+  <td class="text-center"><input type="number" step="any" name="fx_change__{{ suffix }}" value="{{ purchase.fx_change if purchase.fx_change is not none else '' }}" class="input input-bordered input-xs rounded-lg w-20"></td>
+  <td class="text-center"><input type="number" step="any" name="cost_reduction__{{ suffix }}" value="{{ purchase.cost_reduction if purchase.cost_reduction is not none else '' }}" class="input input-bordered input-xs rounded-lg w-20"></td>
+  <td class="text-center"><input type="number" step="any" name="cost_increase__{{ suffix }}" value="{{ purchase.cost_increase if purchase.cost_increase is not none else '' }}" class="input input-bordered input-xs rounded-lg w-20"></td>
+  <td class="text-center"><input type="number" step="any" name="localization__{{ suffix }}" value="{{ purchase.localization if purchase.localization is not none else '' }}" class="input input-bordered input-xs rounded-lg w-20"></td>
+  <td class="text-center"><input type="number" step="any" name="bridge_total__{{ suffix }}" value="{{ purchase.bridge_total if purchase.bridge_total is not none else '' }}" class="input input-bordered input-xs rounded-lg w-24"></td>
+  <td class="text-center"><input type="text" name="bridge_note__{{ suffix }}" value="{{ purchase.bridge_note or '' }}" class="input input-bordered input-xs rounded-lg w-32"></td>
+  <td class="text-center font-bold {% if row.diff is not none and row.diff > 0 %}text-rose-500{% elif row.diff is not none and row.diff < 0 %}text-emerald-600{% endif %}">{{ "%.1f"|format(row.diff) if row.diff is not none else '-' }}</td>
+</tr>
+{% else %}
+<tr><td colspan="25" class="text-center text-[#A3AED0] py-5">데이터가 없습니다.</td></tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+</form>
+{% endblock %}
