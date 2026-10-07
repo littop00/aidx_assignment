@@ -1,0 +1,103 @@
+<div class="flex items-center gap-3 text-sm text-[#A3AED0] mb-2"><span>총 {{ total }}건</span></div>
+<div class="table-responsive bg-white rounded-2xl shadow-sm border-none max-h-[calc(100vh-280px)] overflow-auto">
+<table class="table table-zebra bom-table align-middle text-[#1B2559] text-sm">
+<thead>
+<tr class="table-group-row uppercase text-xs tracking-wider">
+  <th id="bid-basic-group-header" class="bid-group-base text-center" colspan="6" data-base-colspan="6" data-detail-colspan="{{ detail_fields|length }}">수주 BOM (읽기전용)</th>
+  <th class="bid-group-cost text-center" colspan="3">입찰 재료비</th>
+  <th class="bid-group-info text-center" colspan="8">입찰 정보</th>
+  <th class="bid-group-variance text-center" colspan="11">입찰 재료비 변동 내역</th>
+  <th class="bid-group-calc text-center" colspan="2">계산</th>
+</tr>
+<tr class="text-[#A3AED0] uppercase text-xs tracking-wider bg-gray-50">
+  <th class="text-center">레벨</th>
+  <th class="text-center">차종</th>
+  <th class="text-center">구분</th>
+  <th class="text-center">품번</th>
+  <th class="text-center">품명</th>
+  <th class="text-center">수주재료비</th>
+  {% for f in detail_fields %}<th class="bid-detail-column d-none text-center">{{ design_field_labels.get(f, f) }}</th>{% endfor %}
+  <th class="text-center">단가</th>
+  <th class="text-center">재료비</th>
+  <th class="text-center">총원가</th>
+  <th class="text-center">입찰방안</th>
+  <th class="text-center">설계원가</th>
+  <th class="text-center">선정협력사</th>
+  <th class="text-center">결정가</th>
+  <th class="text-center">약정인하</th>
+  <th class="text-center">수량(만대)</th>
+  <th class="text-center">구매금액</th>
+  <th class="text-center">검토의견</th>
+  <th class="text-center">사양추가</th>
+  <th class="text-center">사양삭제</th>
+  <th class="text-center">사양변경</th>
+  <th class="text-center">소재변경</th>
+  <th class="text-center">관세변경</th>
+  <th class="text-center">환율변경</th>
+  <th class="text-center">원가절감</th>
+  <th class="text-center">원가상승</th>
+  <th class="text-center">현지화</th>
+  <th class="text-center">변동합계</th>
+  <th class="text-center">변동비고</th>
+  <th class="text-center">재료비개선율</th>
+  <th class="text-center">차액</th>
+</tr>
+</thead>
+<tbody>
+{% for row in rows %}
+{% set part = row.part %}
+{% set purchase = row.purchase %}
+{% set info = row.info %}
+{% set suffix = part.part_no ~ "__" ~ part.row_num %}
+{% set ref = part.ref_material_cost or 0 %}
+<tr x-data="{ref: {{ ref }}, decided: {{ info.decided_price if info.decided_price is not none else 0 }}}">
+  <td class="text-center">{{ part.level_marker or '' }}</td>
+  <td class="text-center">{{ part.vehicle or '' }}</td>
+  <td class="text-center">{{ part.category or '' }}</td>
+  <td class="text-center">{{ part.part_no }}</td>
+  <td class="text-center">{{ part.part_name or '' }}</td>
+  <td class="text-center">{{ part.ref_material_cost if part.ref_material_cost is not none else '' }}</td>
+  {% for f in detail_fields %}<td class="bid-detail-column d-none text-center">{{ row.detail[f] }}</td>{% endfor %}
+  <td class="text-center"><input type="number" step="any" name="unit_price__{{ suffix }}" value="{{ purchase.unit_price if purchase.unit_price is not none else '' }}" class="input input-bordered input-xs rounded-lg w-24"></td>
+  <td class="text-center"><input type="number" step="any" name="material_cost__{{ suffix }}" value="{{ purchase.material_cost if purchase.material_cost is not none else '' }}" class="input input-bordered input-xs rounded-lg w-24"></td>
+  <td class="text-center"><input type="number" step="any" name="total_cost__{{ suffix }}" value="{{ purchase.total_cost if purchase.total_cost is not none else '' }}" class="input input-bordered input-xs rounded-lg w-24"></td>
+  {% if row.can_edit_bid_info %}
+  <td class="text-center"><input type="text" name="bid_plan__{{ suffix }}" value="{{ info.bid_plan or '' }}" class="input input-bordered input-xs rounded-lg w-24"></td>
+  <td class="text-center"><input type="number" step="any" name="design_cost__{{ suffix }}" value="{{ info.design_cost if info.design_cost is not none else '' }}" class="input input-bordered input-xs rounded-lg w-20"></td>
+  <td class="text-center"><input type="text" name="selected_vendor__{{ suffix }}" value="{{ info.selected_vendor or '' }}" class="input input-bordered input-xs rounded-lg w-24"></td>
+  <td class="text-center"><input type="number" step="any" name="decided_price__{{ suffix }}" x-model.number="decided" class="input input-bordered input-xs rounded-lg w-20"></td>
+  <td class="text-center"><input type="number" step="any" name="committed_reduction__{{ suffix }}" value="{{ info.committed_reduction if info.committed_reduction is not none else '' }}" class="input input-bordered input-xs rounded-lg w-20"></td>
+  <td class="text-center"><input type="number" step="any" name="volume_10k__{{ suffix }}" value="{{ info.volume_10k if info.volume_10k is not none else '' }}" class="input input-bordered input-xs rounded-lg w-20"></td>
+  <td class="text-center"><input type="number" step="any" name="annual_purchase__{{ suffix }}" value="{{ info.annual_purchase if info.annual_purchase is not none else '' }}" class="input input-bordered input-xs rounded-lg w-24"></td>
+  <td class="text-center"><input type="text" name="review_comment__{{ suffix }}" value="{{ info.review_comment or '' }}" class="input input-bordered input-xs rounded-lg w-32"></td>
+  {% else %}
+  <td class="text-center">{{ info.bid_plan or '-' }}</td>
+  <td class="text-center">{{ info.design_cost if info.design_cost is not none else '-' }}</td>
+  <td class="text-center">{{ info.selected_vendor or '-' }}</td>
+  <td class="text-center">{{ info.decided_price if info.decided_price is not none else '-' }}</td>
+  <td class="text-center">{{ info.committed_reduction if info.committed_reduction is not none else '-' }}</td>
+  <td class="text-center">{{ info.volume_10k if info.volume_10k is not none else '-' }}</td>
+  <td class="text-center">{{ info.annual_purchase if info.annual_purchase is not none else '-' }}</td>
+  <td class="text-center">{{ info.review_comment or '-' }}</td>
+  {% endif %}
+  <td class="text-center"><input type="number" step="any" name="spec_add__{{ suffix }}" value="{{ purchase.spec_add if purchase.spec_add is not none else '' }}" class="input input-bordered input-xs rounded-lg w-20"></td>
+  <td class="text-center"><input type="number" step="any" name="spec_delete__{{ suffix }}" value="{{ purchase.spec_delete if purchase.spec_delete is not none else '' }}" class="input input-bordered input-xs rounded-lg w-20"></td>
+  <td class="text-center"><input type="number" step="any" name="spec_change__{{ suffix }}" value="{{ purchase.spec_change if purchase.spec_change is not none else '' }}" class="input input-bordered input-xs rounded-lg w-20"></td>
+  <td class="text-center"><input type="number" step="any" name="material_change__{{ suffix }}" value="{{ purchase.material_change if purchase.material_change is not none else '' }}" class="input input-bordered input-xs rounded-lg w-20"></td>
+  <td class="text-center"><input type="number" step="any" name="tariff_change__{{ suffix }}" value="{{ purchase.tariff_change if purchase.tariff_change is not none else '' }}" class="input input-bordered input-xs rounded-lg w-20"></td>
+  <td class="text-center"><input type="number" step="any" name="fx_change__{{ suffix }}" value="{{ purchase.fx_change if purchase.fx_change is not none else '' }}" class="input input-bordered input-xs rounded-lg w-20"></td>
+  <td class="text-center"><input type="number" step="any" name="cost_reduction__{{ suffix }}" value="{{ purchase.cost_reduction if purchase.cost_reduction is not none else '' }}" class="input input-bordered input-xs rounded-lg w-20"></td>
+  <td class="text-center"><input type="number" step="any" name="cost_increase__{{ suffix }}" value="{{ purchase.cost_increase if purchase.cost_increase is not none else '' }}" class="input input-bordered input-xs rounded-lg w-20"></td>
+  <td class="text-center"><input type="number" step="any" name="localization__{{ suffix }}" value="{{ purchase.localization if purchase.localization is not none else '' }}" class="input input-bordered input-xs rounded-lg w-20"></td>
+  <td class="text-center"><input type="number" step="any" name="bridge_total__{{ suffix }}" value="{{ purchase.bridge_total if purchase.bridge_total is not none else '' }}" class="input input-bordered input-xs rounded-lg w-24"></td>
+  <td class="text-center"><input type="text" name="bridge_note__{{ suffix }}" value="{{ purchase.bridge_note or '' }}" class="input input-bordered input-xs rounded-lg w-32"></td>
+  <td class="text-center font-bold" x-text="ref ? (((ref - decided) / ref * 100).toFixed(1) + '%') : '-'"></td>
+  <td class="text-center font-bold {% if row.diff is not none and row.diff > 0 %}text-rose-500{% elif row.diff is not none and row.diff < 0 %}text-emerald-600{% endif %}">{{ "%.1f"|format(row.diff) if row.diff is not none else '-' }}</td>
+</tr>
+{% else %}
+<tr><td colspan="40" class="text-center text-[#A3AED0] py-5">데이터가 없습니다.</td></tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+{% if total_pages > 1 %}<nav class="grid-pagination" aria-label="입찰 BOM 페이지">{% set first_url = url_for('bid_bom.grid', page=1) %}{% set prev_url = url_for('bid_bom.grid', page=page - 1) %}{% set next_url = url_for('bid_bom.grid', page=page + 1) %}{% set last_url = url_for('bid_bom.grid', page=total_pages) %}<button class="page-btn" {% if page == 1 %}disabled{% else %}hx-get="{{ first_url }}" hx-include="#bid-filter-form" hx-target="#bid-grid-container"{% endif %} aria-label="첫 페이지">&laquo;</button><button class="page-btn" {% if page == 1 %}disabled{% else %}hx-get="{{ prev_url }}" hx-include="#bid-filter-form" hx-target="#bid-grid-container"{% endif %} aria-label="이전 페이지">&lsaquo;</button>{% for p in range(window_start, window_end + 1) %}<button class="page-btn {% if p == page %}active{% endif %}" hx-get="{{ url_for('bid_bom.grid', page=p) }}" hx-include="#bid-filter-form" hx-target="#bid-grid-container">{{ p }}</button>{% endfor %}<button class="page-btn" {% if page == total_pages %}disabled{% else %}hx-get="{{ next_url }}" hx-include="#bid-filter-form" hx-target="#bid-grid-container"{% endif %} aria-label="다음 페이지">&rsaquo;</button><button class="page-btn" {% if page == total_pages %}disabled{% else %}hx-get="{{ last_url }}" hx-include="#bid-filter-form" hx-target="#bid-grid-container"{% endif %} aria-label="마지막 페이지">&raquo;</button></nav>{% endif %}

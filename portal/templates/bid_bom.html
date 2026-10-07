@@ -2,88 +2,105 @@
 {% block title %}입찰 BOM - TMS Portal{% endblock %}
 {% block page_title %}입찰 BOM{% endblock %}
 {% block content %}
-<div role="tablist" class="tabs tabs-boxed mb-4 w-fit">
-  <a role="tab" class="tab tab-active">BOM 조회</a>
-  <a role="tab" class="tab" href="{{ url_for('bid_bom.input_form') }}">입찰정보 입력</a>
-</div>
-<div class="bg-white rounded-2xl p-4 shadow-sm mb-4 flex items-center justify-between">
-  <div class="text-sm text-[#A3AED0]">{{ active.name }} · 총 {{ rows|length }}건</div>
+<div class="bg-white rounded-2xl p-4 shadow-sm border-none mb-4 flex items-center justify-between">
+  <div class="flex items-center gap-2">
+    <h1 class="text-xl font-bold text-[#1B2559]">{{ active.name }}</h1>
+    <span class="text-sm text-[#A3AED0]">{{ active.vehicle or '-' }} · Rev.{{ active.version_no }}</span>
+  </div>
   <button type="submit" form="bid-bom-form" class="btn btn-primary btn-sm rounded-xl font-bold">저장</button>
 </div>
-<form id="bid-bom-form" method="post" action="{{ url_for('bid_bom.save') }}">
-<div class="table-responsive bg-white rounded-2xl shadow-sm border-none max-h-[calc(100vh-240px)] overflow-auto">
-<table class="table table-zebra bom-table align-middle text-[#1B2559] text-sm">
-<thead>
-<tr class="text-[#A3AED0] uppercase text-xs tracking-wider bg-gray-50">
-  <th class="text-center" colspan="10">수주 BOM 참조 (읽기전용)</th>
-  <th class="text-center" colspan="14">입찰 재료비 변동내역</th>
-  <th class="text-center">차액</th>
-</tr>
-<tr class="text-[#A3AED0] uppercase text-xs tracking-wider bg-gray-50">
-  <th class="text-center">레벨</th>
-  <th class="text-center">사양</th>
-  <th class="text-center">소분류</th>
-  <th class="text-center">품번</th>
-  <th class="text-center">품명</th>
-  <th class="text-center">수량</th>
-  <th class="text-center">재질</th>
-  <th class="text-center">표면처리</th>
-  <th class="text-center">중량</th>
-  <th class="text-center">수주재료비</th>
-  <th class="text-center">단가</th>
-  <th class="text-center">재료비</th>
-  <th class="text-center">총원가</th>
-  <th class="text-center">사양추가</th>
-  <th class="text-center">사양삭제</th>
-  <th class="text-center">사양변경</th>
-  <th class="text-center">소재변경</th>
-  <th class="text-center">관세변경</th>
-  <th class="text-center">환율변경</th>
-  <th class="text-center">원가절감</th>
-  <th class="text-center">원가상승</th>
-  <th class="text-center">현지화</th>
-  <th class="text-center">변동합계</th>
-  <th class="text-center">변동비고</th>
-  <th class="text-center">차액</th>
-</tr>
-</thead>
-<tbody>
-{% for row in rows %}
-{% set part = row.part %}
-{% set purchase = row.purchase %}
-{% set suffix = part.part_no ~ "__" ~ part.row_num %}
-<tr>
-  <td class="text-center">{{ part.level_marker or '' }}</td>
-  <td class="text-center">{{ part.spec or '' }}</td>
-  <td class="text-center">{{ part.sub_category or '' }}</td>
-  <td class="text-center">{{ part.part_no }}</td>
-  <td class="text-center">{{ part.part_name or '' }}</td>
-  <td class="text-center">{{ part.qty or '' }}</td>
-  <td class="text-center">{{ part.material or '' }}</td>
-  <td class="text-center">{{ part.surface or '' }}</td>
-  <td class="text-center">{{ part.weight_total or '' }}</td>
-  <td class="text-center">{{ part.ref_material_cost if part.ref_material_cost is not none else '' }}</td>
-  <td class="text-center"><input type="number" step="any" name="unit_price__{{ suffix }}" value="{{ purchase.unit_price if purchase.unit_price is not none else '' }}" class="input input-bordered input-xs rounded-lg w-24"></td>
-  <td class="text-center"><input type="number" step="any" name="material_cost__{{ suffix }}" value="{{ purchase.material_cost if purchase.material_cost is not none else '' }}" class="input input-bordered input-xs rounded-lg w-24"></td>
-  <td class="text-center"><input type="number" step="any" name="total_cost__{{ suffix }}" value="{{ purchase.total_cost if purchase.total_cost is not none else '' }}" class="input input-bordered input-xs rounded-lg w-24"></td>
-  <td class="text-center"><input type="number" step="any" name="spec_add__{{ suffix }}" value="{{ purchase.spec_add if purchase.spec_add is not none else '' }}" class="input input-bordered input-xs rounded-lg w-20"></td>
-  <td class="text-center"><input type="number" step="any" name="spec_delete__{{ suffix }}" value="{{ purchase.spec_delete if purchase.spec_delete is not none else '' }}" class="input input-bordered input-xs rounded-lg w-20"></td>
-  <td class="text-center"><input type="number" step="any" name="spec_change__{{ suffix }}" value="{{ purchase.spec_change if purchase.spec_change is not none else '' }}" class="input input-bordered input-xs rounded-lg w-20"></td>
-  <td class="text-center"><input type="number" step="any" name="material_change__{{ suffix }}" value="{{ purchase.material_change if purchase.material_change is not none else '' }}" class="input input-bordered input-xs rounded-lg w-20"></td>
-  <td class="text-center"><input type="number" step="any" name="tariff_change__{{ suffix }}" value="{{ purchase.tariff_change if purchase.tariff_change is not none else '' }}" class="input input-bordered input-xs rounded-lg w-20"></td>
-  <td class="text-center"><input type="number" step="any" name="fx_change__{{ suffix }}" value="{{ purchase.fx_change if purchase.fx_change is not none else '' }}" class="input input-bordered input-xs rounded-lg w-20"></td>
-  <td class="text-center"><input type="number" step="any" name="cost_reduction__{{ suffix }}" value="{{ purchase.cost_reduction if purchase.cost_reduction is not none else '' }}" class="input input-bordered input-xs rounded-lg w-20"></td>
-  <td class="text-center"><input type="number" step="any" name="cost_increase__{{ suffix }}" value="{{ purchase.cost_increase if purchase.cost_increase is not none else '' }}" class="input input-bordered input-xs rounded-lg w-20"></td>
-  <td class="text-center"><input type="number" step="any" name="localization__{{ suffix }}" value="{{ purchase.localization if purchase.localization is not none else '' }}" class="input input-bordered input-xs rounded-lg w-20"></td>
-  <td class="text-center"><input type="number" step="any" name="bridge_total__{{ suffix }}" value="{{ purchase.bridge_total if purchase.bridge_total is not none else '' }}" class="input input-bordered input-xs rounded-lg w-24"></td>
-  <td class="text-center"><input type="text" name="bridge_note__{{ suffix }}" value="{{ purchase.bridge_note or '' }}" class="input input-bordered input-xs rounded-lg w-32"></td>
-  <td class="text-center font-bold {% if row.diff is not none and row.diff > 0 %}text-rose-500{% elif row.diff is not none and row.diff < 0 %}text-emerald-600{% endif %}">{{ "%.1f"|format(row.diff) if row.diff is not none else '-' }}</td>
-</tr>
-{% else %}
-<tr><td colspan="25" class="text-center text-[#A3AED0] py-5">데이터가 없습니다.</td></tr>
-{% endfor %}
-</tbody>
-</table>
+
+<div class="flex flex-col lg:flex-row lg:items-end lg:justify-between bg-white rounded-2xl p-4 shadow-sm border-none mb-4 gap-4">
+  <form id="bid-filter-form" class="flex flex-wrap items-end gap-3" hx-get="{{ url_for('bid_bom.grid') }}" hx-target="#bid-grid-container" hx-trigger="change, submit" hx-include="#bid-filter-form">
+    {% if assigned_only %}<input type="hidden" name="assigned_only" value="1">{% endif %}
+    <div>
+      <label class="text-xs font-medium text-[#A3AED0] mb-1 block">입력 상태</label>
+      <select name="status" class="select select-bordered select-sm rounded-xl bg-base-100 border-base-300 status-select">
+        <option value="all">전체</option>
+        <option value="done">입력 완료</option>
+        <option value="missing">미입력만 보기</option>
+      </select>
+    </div>
+    <div x-data="{ open: false }">
+      <label class="text-xs font-medium text-[#A3AED0] mb-1 block">구분 (다중선택)</label>
+      <div class="relative">
+        <button id="bid-category-select-button" type="button" class="btn btn-ghost btn-sm rounded-xl border border-[#E0E5F2]" @click="open = !open" @click.outside="open = false">전체 구분</button>
+        <div class="absolute z-50 bg-white rounded-xl shadow-lg border border-[#E0E5F2] p-2 mt-1 min-w-[180px]" x-show="open" x-transition x-cloak>
+          {% for c in categories %}
+          <label class="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-gray-50 text-sm cursor-pointer">
+            <input class="checkbox checkbox-xs checkbox-primary" type="checkbox" name="category" value="{{ c }}">
+            <span>{{ c }}</span>
+            <span class="text-xs text-[#A3AED0] ml-auto">{{ category_counts.get(c, 0) }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    <div x-data="{ open: false }">
+      <label class="text-xs font-medium text-[#A3AED0] mb-1 block">세부구분 (다중선택)</label>
+      <div class="relative">
+        <button id="bid-subcategory-select-button" type="button" class="btn btn-ghost btn-sm rounded-xl border border-[#E0E5F2]" @click="open = !open" @click.outside="open = false">전체 세부구분</button>
+        <div class="absolute z-50 bg-white rounded-xl shadow-lg border border-[#E0E5F2] p-2 mt-1 min-w-[180px]" x-show="open" x-transition x-cloak>
+          {% for c in sub_categories %}
+          <label class="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-gray-50 text-sm cursor-pointer">
+            <input class="checkbox checkbox-xs checkbox-primary" type="checkbox" name="sub_category" value="{{ c }}">
+            <span>{{ c }}</span>
+            <span class="text-xs text-[#A3AED0] ml-auto">{{ sub_category_counts.get(c, 0) }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    <div>
+      <label class="text-xs font-medium text-[#A3AED0] mb-1 block">페이지 행 수</label>
+      <select name="page_size" class="select select-bordered select-sm rounded-xl bg-base-100 border-base-300">
+        {% for size in [10, 20, 30, 50] %}<option value="{{ size }}" {% if size == 20 %}selected{% endif %}>{{ size }}행</option>{% endfor %}
+      </select>
+    </div>
+    <div class="min-w-[220px]">
+      <label class="text-xs font-medium text-[#A3AED0] mb-1 block">검색</label>
+      <div class="flex gap-2">
+        <input type="text" name="search" class="input input-bordered input-sm rounded-xl bg-base-100 border-base-300 focus:border-primary focus:outline-none transition-all w-full" placeholder="품번 / 품명 / 구분 검색" hx-get="{{ url_for('bid_bom.grid') }}" hx-target="#bid-grid-container" hx-trigger="keyup changed delay:400ms" hx-include="#bid-filter-form">
+        <button type="submit" class="btn btn-primary btn-sm rounded-xl" aria-label="검색"><i class="bi bi-search"></i></button>
+      </div>
+    </div>
+  </form>
+  <button type="button" id="toggle-bid-detail" class="btn btn-ghost btn-sm rounded-xl shrink-0">상세 BOM 표시</button>
 </div>
+
+<form id="bid-bom-form" method="post" action="{{ url_for('bid_bom.save') }}">
+  <div id="bid-grid-container" hx-get="{{ url_for('bid_bom.grid') }}" hx-trigger="load" hx-include="#bid-filter-form">
+    <div class="text-center text-[#A3AED0] py-10"><i class="bi bi-hourglass-split"></i> 불러오는 중…</div>
+  </div>
 </form>
+
+<script>
+document.addEventListener('click', (event) => {
+  const toggle = event.target.closest('#toggle-bid-detail');
+  if (!toggle) return;
+  const cells = document.querySelectorAll('.bid-detail-column');
+  cells.forEach((cell) => cell.classList.toggle('d-none'));
+  const header = document.getElementById('bid-basic-group-header');
+  if (header) {
+    const showing = !cells[0] || !cells[0].classList.contains('d-none');
+    const base = parseInt(header.dataset.baseColspan, 10);
+    const detail = parseInt(header.dataset.detailColspan, 10);
+    header.colSpan = showing ? base + detail : base;
+  }
+  toggle.textContent = cells[0] && !cells[0].classList.contains('d-none') ? '상세 BOM 숨기기' : '상세 BOM 표시';
+});
+
+document.addEventListener('change', (event) => {
+  if (event.target.matches('#bid-filter-form input[name=category]')) {
+    const selected = [...document.querySelectorAll('#bid-filter-form input[name=category]:checked')].map((el) => el.value);
+    const button = document.getElementById('bid-category-select-button');
+    button.textContent = selected.length ? `선택: ${selected.join(', ')}` : '전체 구분';
+  }
+  if (event.target.matches('#bid-filter-form input[name=sub_category]')) {
+    const selected = [...document.querySelectorAll('#bid-filter-form input[name=sub_category]:checked')].map((el) => el.value);
+    const button = document.getElementById('bid-subcategory-select-button');
+    button.textContent = selected.length ? `선택: ${selected.join(', ')}` : '전체 세부구분';
+  }
+});
+</script>
 {% endblock %}

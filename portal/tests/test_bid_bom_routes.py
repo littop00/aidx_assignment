@@ -113,7 +113,7 @@ def _published_bid_bom(app):
 def test_bid_bom_grid_shows_published_version_rows(client, admin_user, app):
     _login(client, admin_user)
     _published_bid_bom(app)
-    resp = client.get("/bid-bom/")
+    resp = client.get("/bid-bom/grid")
     assert resp.status_code == 200
     assert b"P001" in resp.data
     assert b"100" in resp.data
@@ -163,35 +163,35 @@ def test_admin_assigns_bid_category_members(client, admin_user, app):
     assert db.get_user_bid_categories(conn, bid_id, bob["id"]) == {"엔진"}
 
 
-def test_bid_bom_input_shows_only_assigned_parts(client, app):
+def test_bid_bom_grid_assigned_only_shows_only_assigned_parts(client, app):
     bid_id = _published_bid_bom(app)
     bob = _create_regular_user(app, "bob")
     conn = db.get_connection(app.config["DB_PATH"])
     db.set_bid_category_membership(conn, bid_id, bob["id"], "엔진", True)
     conn.close()
     _login(client, bob)
-    resp = client.get("/bid-bom/input")
+    resp = client.get("/bid-bom/grid?assigned_only=1")
     assert resp.status_code == 200
     assert b"P001" in resp.data
 
 
-def test_bid_bom_input_hides_unassigned_parts(client, app):
+def test_bid_bom_grid_assigned_only_hides_unassigned_parts(client, app):
     _published_bid_bom(app)
     carol = _create_regular_user(app, "carol")
     _login(client, carol)
-    resp = client.get("/bid-bom/input")
+    resp = client.get("/bid-bom/grid?assigned_only=1")
     assert resp.status_code == 200
     assert b"P001" not in resp.data
 
 
-def test_bid_bom_input_save_persists_bid_info(client, app):
+def test_bid_bom_save_persists_bid_info_for_assigned_user(client, app):
     bid_id = _published_bid_bom(app)
     bob = _create_regular_user(app, "bob")
     conn = db.get_connection(app.config["DB_PATH"])
     db.set_bid_category_membership(conn, bid_id, bob["id"], "엔진", True)
     conn.close()
     _login(client, bob)
-    resp = client.post("/bid-bom/input/save", data={
+    resp = client.post("/bid-bom/save", data={
         "bid_plan__P001__11": "경쟁입찰",
         "decided_price__P001__11": "80",
     })
@@ -202,11 +202,11 @@ def test_bid_bom_input_save_persists_bid_info(client, app):
     assert info["decided_price"] == 80.0
 
 
-def test_bid_bom_input_save_ignores_unassigned_submission(client, app):
+def test_bid_bom_save_ignores_bid_info_for_unassigned_user(client, app):
     bid_id = _published_bid_bom(app)
     carol = _create_regular_user(app, "carol")
     _login(client, carol)
-    resp = client.post("/bid-bom/input/save", data={
+    resp = client.post("/bid-bom/save", data={
         "bid_plan__P001__11": "경쟁입찰",
         "decided_price__P001__11": "80",
     })

@@ -83,9 +83,15 @@
         </li>
         {% endif %}
 
+        <li class="menu-title text-[#A3AED0] font-bold text-xs tracking-wider mt-4 mb-2 px-2">입찰 BOM</li>
         <li>
-          <a href="{{ url_for('bid_bom.index') }}" class="flex items-center gap-3 px-4 py-3 rounded-xl font-medium {% if request.endpoint and request.endpoint.startswith('bid_bom.') %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
-            <i class="bi bi-clipboard2-data text-lg"></i> 입찰 BOM
+          <a href="{{ url_for('bid_bom.index') }}" class="flex items-center gap-3 px-4 py-3 rounded-xl font-medium {% if request.endpoint == 'bid_bom.index' and not request.args.get('assigned_only') %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
+            <i class="bi bi-table text-lg"></i> BOM 조회
+          </a>
+        </li>
+        <li>
+          <a href="{{ url_for('bid_bom.index', assigned_only=1) }}" class="flex items-center gap-3 px-4 py-3 rounded-xl font-medium {% if request.endpoint == 'bid_bom.index' and request.args.get('assigned_only') %}bg-blue-50 text-blue-600 font-bold{% else %}text-[#A3AED0] hover:bg-gray-50 hover:text-[#1B2559]{% endif %}">
+            <i class="bi bi-pencil-square text-lg"></i> 입찰정보 입력
           </a>
         </li>
 
